@@ -39,7 +39,7 @@ pip install jupyter
 jupyter notebook Melanopsin_Model_Tutorial.ipynb
 ```
 
-You can also open the same `.ipynb` in a Python IDE (VS Code/Cursor, Pycharm, JupyterLab, Spyder...) with a Python 3.10 kernel. Run the **Initialization** cell from the repository root (the notebook will try to move there if needed).
+You can also open the same `.ipynb` in a programming environment (VS Code/Cursor, Pycharm, JupyterLab, Spyder...) with a Python 3.10 kernel. Run the **Initialization** cell with the notebook in the repository root (the notebook will try to move there if needed).
 
 ## Run the app (no Python required)
 
