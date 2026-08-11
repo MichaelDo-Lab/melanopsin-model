@@ -10,7 +10,7 @@ The model runs through an interactive coding notebook, an app with a graphical u
 
 This repository is released in two tracks:
 
-- **bioRxiv preprint (preliminary):** tag [`v0.1.0-prelim`](https://github.com/Do-Laboratory/melanopsin-model/releases/tag/v0.1.0-prelim) freezes the code and Windows executable that match Nguyen and Caval-Holme et al. 2026 (bioRxiv). Use this snapshot to reproduce the preprint.
+- **bioRxiv preprint:** tag [`v0.1.0-bioRxiv`](https://github.com/Do-Laboratory/melanopsin-model/releases/tag/v0.1.0-prelim) freezes the code and Windows executable that match Nguyen and Caval-Holme et al. 2026 (bioRxiv). Use this snapshot to reproduce the preprint.
 - **Continuously updated:** the default branch (`main` or the current development branch) and the **Latest** release on the [Releases](https://github.com/Do-Laboratory/melanopsin-model/releases) page receive ongoing fixes and improvements. 
 
 ## Run the tutorial notebook
