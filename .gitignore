@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+.venv-build/
+env/
+venv/
+
+# PyInstaller build output (distribute via GitHub Releases, not the repo).
+/build/
+/dist/
+*.manifest
+*.exe
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+
+# Debug logs
+debug-*.log
