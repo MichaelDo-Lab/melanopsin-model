@@ -140,6 +140,7 @@ from myutils.model_functions import (
 )
 from myutils.plotting_functions import plotModelRun, plotModelVsData
 from myutils.startup_splash import StartupSplash
+from myutils.window_placement import place_toplevel
 
 # Same rate as Melanopsin_Model_Tutorial.ipynb manuscript cells
 MANUSCRIPT_RATE = 0.005
@@ -476,6 +477,7 @@ class SpectrumUnitsDialog(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.bind("<Return>", lambda _e: self._on_ok())
         self.bind("<Escape>", lambda _e: self._on_cancel())
+        place_toplevel(self, parent, mode="center")
         self.grab_set()
         self.wait_window()
 
@@ -1453,6 +1455,7 @@ class ModelConfigDialog(tk.Toplevel):
 
         self.minsize(520, 400)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        place_toplevel(self, parent, mode="edge")
 
     def _bind_global_wheel(self, _event=None) -> None:
         if self._wheel_bindtags_active:
@@ -1678,6 +1681,7 @@ class CustomStimulusDialog(tk.Toplevel):
 
         self.minsize(420, 180)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        place_toplevel(self, parent, mode="edge")
 
     def _on_close(self) -> None:
         self._parent._custom_stim_dialog = None
@@ -1735,6 +1739,7 @@ class _SpectrumPickerPopup(tk.Toplevel):
         ttk.Button(btn_row, text="Select", command=self._on_choose).pack(side=tk.LEFT)
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
 
+        place_toplevel(self, parent, mode="center")
         self.grab_set()
 
     def _on_choose(self, _event=None) -> None:
@@ -1919,6 +1924,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         self._sync_duration_to_parent()
         self._loaded_source_name: str | None = None
         self._tracking_edits = True
+        place_toplevel(self, parent, mode="edge")
 
     def _mark_stimulus_dirty(self) -> None:
         """Flag the builder as having unsaved edits (ignored during load/init)."""
@@ -2290,6 +2296,14 @@ class StimulusBuilderDialog(tk.Toplevel):
 
         for w in (header_label, spec_btn, intensity_entry, duration_entry):
             w.bind("<Button-1>", _on_click, add="+")
+        header_label.bind(
+            "<Button-3>",
+            lambda e, iv=interval_entry: self._on_interval_header_context(e, iv),
+        )
+        header_label.bind(
+            "<Control-Button-1>",
+            lambda e, iv=interval_entry: self._on_interval_header_context(e, iv),
+        )
         intensity_entry.bind(
             "<Return>",
             lambda _e, v=intensity_var: self._on_interval_numeric_change(
@@ -2397,8 +2411,8 @@ class StimulusBuilderDialog(tk.Toplevel):
         self._update_compact_grid_display()
         self._on_grid_configure()
 
-    def _add_interval(self, *, defer_ui_refresh: bool = False) -> None:
-        interval_entry: dict = {
+    def _make_blank_interval_entry(self) -> dict:
+        return {
             "spectrum_var": tk.StringVar(master=self, value=self._NONE_LABEL),
             "intensity_var": tk.StringVar(master=self, value=""),
             "duration_var": tk.StringVar(master=self, value=""),
@@ -2406,6 +2420,9 @@ class StimulusBuilderDialog(tk.Toplevel):
             "header_label": None,
             "block_kind": "interval",
         }
+
+    def _add_interval(self, *, defer_ui_refresh: bool = False) -> None:
+        interval_entry = self._make_blank_interval_entry()
         self._intervals.append(interval_entry)
         self._mount_interval_widgets(
             interval_entry,
@@ -2415,6 +2432,41 @@ class StimulusBuilderDialog(tk.Toplevel):
         if not defer_ui_refresh:
             self._refresh_interval_ui()
         self._mark_stimulus_dirty()
+
+    def _insert_blank_interval(self, index: int) -> None:
+        """Insert a blank interval at ``index`` (append if ``index`` is at/past the end)."""
+        if index >= len(self._intervals):
+            self._add_interval()
+            self._select_column(len(self._intervals) - 1)
+            return
+        self._intervals.insert(index, self._make_blank_interval_entry())
+        self._selected_col = None
+        self._rebuild_all_interval_widgets()
+        self._refresh_interval_ui()
+        self._select_column(index)
+        self._mark_stimulus_dirty()
+
+    def _on_interval_header_context(self, event, interval_entry: dict) -> str:
+        """Show Insert before / Insert after on an interval-number header."""
+        try:
+            idx = self._intervals.index(interval_entry)
+        except ValueError:
+            return "break"
+        self._select_column(idx)
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(
+            label="Insert before",
+            command=lambda: self._insert_blank_interval(idx),
+        )
+        menu.add_command(
+            label="Insert after",
+            command=lambda: self._insert_blank_interval(idx + 1),
+        )
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+        return "break"
 
     def _add_interval_data(self, spectrum: str, intensity: float, duration: float) -> dict:
         """Append one interval without mounting per-column grid widgets."""
@@ -2485,6 +2537,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Cancel", command=picker.destroy).pack(side=tk.RIGHT)
 
         picker.protocol("WM_DELETE_WINDOW", picker.destroy)
+        place_toplevel(picker, self, mode="center")
         picker.grab_set()
         picker.wait_window()
 
@@ -3512,6 +3565,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Cancel", command=picker.destroy).pack(side=tk.RIGHT)
 
         picker.protocol("WM_DELETE_WINDOW", picker.destroy)
+        place_toplevel(picker, self, mode="center")
         picker.grab_set()
         picker.wait_window()
         return result["choice"]
@@ -3561,6 +3615,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Cancel", command=picker.destroy).pack(side=tk.RIGHT)
 
         picker.protocol("WM_DELETE_WINDOW", picker.destroy)
+        place_toplevel(picker, self, mode="center")
         picker.grab_set()
         picker.wait_window()
         return result["choice"]
@@ -3647,6 +3702,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Load", command=_confirm).pack(side=tk.LEFT)
         ttk.Button(btn_row, text="Cancel", command=picker.destroy).pack(side=tk.RIGHT)
         picker.protocol("WM_DELETE_WINDOW", picker.destroy)
+        place_toplevel(picker, self, mode="center")
         picker.grab_set()
         picker.wait_window()
         return result["choice"]
@@ -3708,6 +3764,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Load", command=_confirm).pack(side=tk.LEFT)
         ttk.Button(btn_row, text="Cancel", command=picker.destroy).pack(side=tk.RIGHT)
         picker.protocol("WM_DELETE_WINDOW", picker.destroy)
+        place_toplevel(picker, self, mode="center")
         picker.grab_set()
         picker.wait_window()
 
@@ -3956,6 +4013,7 @@ class AutoSaveOptionsDialog(tk.Toplevel):
 
         self.minsize(520, 200)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        place_toplevel(self, parent, mode="edge")
 
     def _initial_dir_for_dialog(self, p: Path) -> str:
         if p.exists() and p.is_dir():
@@ -4052,6 +4110,7 @@ class StimulusDeleteProgressDialog(tk.Toplevel):
         )
         self._progress.pack(fill=tk.X, pady=(0, 4))
         self.update_idletasks()
+        place_toplevel(self, parent, mode="center")
         self.grab_set()
 
     def set_progress(self, message: str, percent: int) -> None:
@@ -4203,6 +4262,7 @@ class StimulusLibraryPopup(tk.Toplevel):
 
         self.minsize(720, 360)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        place_toplevel(self, parent, mode="edge")
 
     def _preview_title_char_width(self) -> int:
         """Estimate wrap width from the current preview pane size."""
@@ -4623,6 +4683,7 @@ class PredictionComparisonDialog(tk.Toplevel):
 
         self.minsize(980, 540)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        place_toplevel(self, parent, mode="edge")
 
     def _render_placeholder(self, text: str) -> None:
         self._fig.clear()
@@ -4866,6 +4927,7 @@ class SamplingRateDialog(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.bind("<Return>", lambda _e: self._on_ok())
         self.bind("<Escape>", lambda _e: self._on_cancel())
+        place_toplevel(self, parent, mode="center")
         self.grab_set()
         self.wait_window()
 
@@ -5031,6 +5093,7 @@ class DataComparatorDialog(tk.Toplevel):
 
         self.minsize(1020, 560)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        place_toplevel(self, parent, mode="edge")
 
     def _render_placeholder(self, text: str) -> None:
         self._close_compare_figure()
@@ -5459,6 +5522,7 @@ class SpectrumBuilderDialog(tk.Toplevel):
             ).pack(anchor=tk.W, pady=(0, 8))
             self.minsize(440, 140)
             self.protocol("WM_DELETE_WINDOW", self._on_close)
+            place_toplevel(self, parent, mode="edge")
             return
 
         nb = ttk.Notebook(outer)
@@ -5529,6 +5593,7 @@ class SpectrumBuilderDialog(tk.Toplevel):
 
         self.minsize(640, 480)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        place_toplevel(self, parent, mode="edge")
 
     def _on_tab_changed(self, _event=None) -> None:
         if self._notebook is None:
@@ -5832,6 +5897,7 @@ class SpectrumDeleteConflictDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Cancel", command=self._on_cancel).pack(side=tk.RIGHT)
 
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        place_toplevel(self, parent, mode="center")
         self.grab_set()
         self.wait_window(self)
 
@@ -5897,6 +5963,7 @@ class SpectrumLibraryPopup(tk.Toplevel):
 
         self.minsize(760, 420)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        place_toplevel(self, parent, mode="edge")
 
     def _build_library_tab(self, container) -> None:
         btn_row = ttk.Frame(container, padding=(0, 8, 0, 0))
@@ -6255,6 +6322,7 @@ class CropSpectrumDialog(tk.Toplevel):
         ).pack(side=tk.RIGHT)
 
         self._refresh_preview()
+        place_toplevel(self, popup, mode="edge")
 
     def _set_window(self, lo: float, hi: float, from_span: bool = False) -> None:
         """Clamp/normalize the window and sync span, entries, and preview."""

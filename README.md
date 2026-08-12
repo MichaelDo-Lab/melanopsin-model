@@ -266,7 +266,9 @@ To create a stimulus interval
 
 This is the process for creating a single interval. To create additional intervals
 click the **Add...** button in the top left corner to append an additional
-blank interval to the end of the stimulus. To delete an interval select the
+blank interval to the end of the stimulus. Right-click an interval number in the
+table and choose **Insert before** or **Insert after** to insert a blank interval
+at that position. To delete an interval select the
 **Delete...** button directly next to **Add...**. This will open a dialogue for
 the user to delete a single specific interval.
 
