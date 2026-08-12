@@ -400,7 +400,7 @@ class SpectrumUnitsDialog(tk.Toplevel):
         self.transient(parent)
         self.resizable(False, False)
 
-        self._choice_var = tk.StringVar(value=self._INTENSITY)
+        self._choice_var = tk.StringVar(master=self, value=self._INTENSITY)
         self._other_labels = [
             _SPECTRUM_UNIT_TABLE[k][0] for k in _SPECTRUM_OTHER_UNIT_KEYS
         ]
@@ -408,7 +408,8 @@ class SpectrumUnitsDialog(tk.Toplevel):
             _SPECTRUM_UNIT_TABLE[k][0]: k for k in _SPECTRUM_OTHER_UNIT_KEYS
         }
         self._other_var = tk.StringVar(
-            value=self._other_labels[0] if self._other_labels else ""
+            master=self,
+            value=self._other_labels[0] if self._other_labels else "",
         )
 
         frame = ttk.Frame(self, padding=16)
@@ -1092,7 +1093,7 @@ class ModelConfigDialog(tk.Toplevel):
             (k, v) for k, v in self._template.items() if k != "ti"
         ]
         self._entries: dict[str, ttk.Entry | ttk.Combobox] = {}
-        self._section_font = tkfont.nametofont("TkDefaultFont").copy()
+        self._section_font = tkfont.nametofont("TkDefaultFont", root=self).copy()
         self._section_font.configure(weight="bold")
 
         outer = ttk.Frame(self, padding=8)
@@ -1501,7 +1502,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         # list of dicts, one per interval column
         self._intervals: list[dict] = []
         self._selected_col: int | None = None
-        self._intensity_log_mode = tk.BooleanVar(value=True)
+        self._intensity_log_mode = tk.BooleanVar(master=self, value=True)
         self._compact_summary_window: dict | None = None
         self._layout_syncing = False
 
@@ -1539,7 +1540,7 @@ class StimulusBuilderDialog(tk.Toplevel):
             command=self._on_intensity_mode_toggle,
         ).pack(side=tk.LEFT, padx=(12, 0))
         ttk.Label(top_bar, text="Duration (s):").pack(side=tk.LEFT, padx=(16, 4))
-        self._duration_var = tk.StringVar(value="")
+        self._duration_var = tk.StringVar(master=self, value="")
         self._duration_entry = ttk.Entry(
             top_bar, textvariable=self._duration_var, width=12
         )
@@ -1949,7 +1950,7 @@ class StimulusBuilderDialog(tk.Toplevel):
 
     def _build_row_labels(self) -> None:
         """Draw the fixed row-header column (col 0)."""
-        header_font = tkfont.nametofont("TkDefaultFont").copy()
+        header_font = tkfont.nametofont("TkDefaultFont", root=self).copy()
         header_font.configure(weight="bold")
         label_width = 28
         label_kwargs = dict(
@@ -2033,7 +2034,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         parent = chunk["frame"]
         col_idx = interval_index + 1
 
-        header_font = tkfont.nametofont("TkDefaultFont").copy()
+        header_font = tkfont.nametofont("TkDefaultFont", root=self).copy()
         header_font.configure(weight="bold")
 
         header_label = tk.Label(
@@ -2119,9 +2120,9 @@ class StimulusBuilderDialog(tk.Toplevel):
 
     def _add_interval(self, *, defer_ui_refresh: bool = False) -> None:
         interval_entry: dict = {
-            "spectrum_var": tk.StringVar(value=self._NONE_LABEL),
-            "intensity_var": tk.StringVar(value=""),
-            "duration_var": tk.StringVar(value=""),
+            "spectrum_var": tk.StringVar(master=self, value=self._NONE_LABEL),
+            "intensity_var": tk.StringVar(master=self, value=""),
+            "duration_var": tk.StringVar(master=self, value=""),
             "widgets": [],
             "header_label": None,
             "block_kind": "interval",
@@ -2139,13 +2140,14 @@ class StimulusBuilderDialog(tk.Toplevel):
         """Append one interval without mounting per-column grid widgets."""
         spectrum = str(spectrum).strip()
         interval_entry: dict = {
-            "spectrum_var": tk.StringVar(value=spectrum),
+            "spectrum_var": tk.StringVar(master=self, value=spectrum),
             "intensity_var": tk.StringVar(
+                master=self,
                 value="0"
                 if spectrum == "Dark"
-                else self._format_intensity_for_display(float(intensity))
+                else self._format_intensity_for_display(float(intensity)),
             ),
-            "duration_var": tk.StringVar(value=f"{float(duration):g}"),
+            "duration_var": tk.StringVar(master=self, value=f"{float(duration):g}"),
             "widgets": [],
             "header_label": None,
             "compact": True,
@@ -3816,7 +3818,7 @@ def _install_listbox_search_row(parent: ttk.Frame) -> tk.StringVar:
     search_row = ttk.Frame(parent)
     search_row.pack(side=tk.TOP, fill=tk.X, pady=(0, 4))
     ttk.Label(search_row, text="Search:").pack(side=tk.LEFT)
-    search_var = tk.StringVar()
+    search_var = tk.StringVar(master=parent)
     ttk.Entry(search_row, textvariable=search_var).pack(
         side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0)
     )
@@ -3886,7 +3888,7 @@ class StimulusLibraryPopup(tk.Toplevel):
         )
 
         self._scrubber_frame = ttk.Frame(preview_controls)
-        self._scrubber_var = tk.IntVar(value=0)
+        self._scrubber_var = tk.IntVar(master=self, value=0)
         self._scrubber_scale = ttk.Scale(
             self._scrubber_frame,
             from_=0,
@@ -4577,7 +4579,7 @@ class DataComparatorDialog(tk.Toplevel):
         )
 
         ttk.Label(left, text="Model series (prediction)").pack(anchor=tk.W)
-        self._series_var = tk.StringVar(value="")
+        self._series_var = tk.StringVar(master=self, value="")
         self._series_combo = ttk.Combobox(
             left,
             textvariable=self._series_var,
@@ -4593,7 +4595,9 @@ class DataComparatorDialog(tk.Toplevel):
         ttk.Button(
             ds_frame, text="Load dataset CSV…", command=self._on_load_dataset
         ).pack(anchor=tk.W)
-        self._dataset_status = tk.StringVar(value="No dataset loaded.")
+        self._dataset_status = tk.StringVar(
+            master=self, value="No dataset loaded."
+        )
         ttk.Label(ds_frame, textvariable=self._dataset_status, wraplength=280).pack(
             anchor=tk.W, pady=(4, 0)
         )
@@ -4893,9 +4897,9 @@ class SpectrumBuilderDialog(tk.Toplevel):
         self.title("Spectrum Builder")
         self._parent = parent
         self.transient(parent)
-        self._mono_peak = tk.StringVar(value="550.0")
-        self._mono_resolved = tk.StringVar(value="—")
-        self._mix_normalize = tk.BooleanVar(value=False)
+        self._mono_peak = tk.StringVar(master=self, value="550.0")
+        self._mono_resolved = tk.StringVar(master=self, value="—")
+        self._mix_normalize = tk.BooleanVar(master=self, value=False)
         self._mix_rows: list[dict] = []
         self._notebook: ttk.Notebook | None = None
         self._mono_fig = None
@@ -5095,7 +5099,7 @@ class SpectrumBuilderDialog(tk.Toplevel):
             cb.set(vals[0])
         cb.pack(side=tk.LEFT)
         ttk.Label(rowf, text="Weight:").pack(side=tk.LEFT, padx=(8, 2))
-        wvar = tk.StringVar(value="1.0")
+        wvar = tk.StringVar(master=self, value="1.0")
         ttk.Entry(rowf, textvariable=wvar, width=10).pack(side=tk.LEFT)
         self._mix_rows.append({"frame": rowf, "combo": cb, "weight": wvar})
         self._refresh_mix_row_combos()
@@ -5532,13 +5536,13 @@ class CropSpectrumDialog(tk.Toplevel):
         entry_row = ttk.Frame(outer, padding=(0, 8, 0, 0))
         entry_row.pack(side=tk.TOP, fill=tk.X)
         ttk.Label(entry_row, text="Min (nm):").pack(side=tk.LEFT)
-        self._min_var = tk.StringVar(value=f"{self._lo:g}")
+        self._min_var = tk.StringVar(master=self, value=f"{self._lo:g}")
         min_entry = ttk.Entry(entry_row, textvariable=self._min_var, width=10)
         min_entry.pack(side=tk.LEFT, padx=(4, 12))
         min_entry.bind("<Return>", self._on_entry_commit)
         min_entry.bind("<FocusOut>", self._on_entry_commit)
         ttk.Label(entry_row, text="Max (nm):").pack(side=tk.LEFT)
-        self._max_var = tk.StringVar(value=f"{self._hi:g}")
+        self._max_var = tk.StringVar(master=self, value=f"{self._hi:g}")
         max_entry = ttk.Entry(entry_row, textvariable=self._max_var, width=10)
         max_entry.pack(side=tk.LEFT, padx=(4, 0))
         max_entry.bind("<Return>", self._on_entry_commit)
@@ -5699,13 +5703,15 @@ class ManuscriptSimApp(tk.Tk):
         self._known_stimuli: list[str] = list(LABELS) + sorted(
             self._custom_stimuli.keys()
         )
-        self._selected_stimulus_var = tk.StringVar(value=NO_STIMULUS_SELECTED_LABEL)
+        self._selected_stimulus_var = tk.StringVar(
+            master=self, value=NO_STIMULUS_SELECTED_LABEL
+        )
         self._run_lock = threading.Lock()
         self._cancel_event = threading.Event()
         self._progress_queue: Queue[tuple[int, int]] = Queue()
         self._progress_poll_id: str | None = None
-        self._autosave_images = tk.BooleanVar(value=False)
-        self._autosave_data = tk.BooleanVar(value=False)
+        self._autosave_images = tk.BooleanVar(master=self, value=False)
+        self._autosave_data = tk.BooleanVar(master=self, value=False)
         self._autosave_images_dir: Path = Path(DEFAULT_AUTOSAVE_IMAGES_DIR)
         self._autosave_data_dir: Path = Path(DEFAULT_AUTOSAVE_DATA_DIR)
         self._autosave_options_dialog: AutoSaveOptionsDialog | None = None
@@ -5850,6 +5856,11 @@ class ManuscriptSimApp(tk.Tk):
         if self._startup_splash is not None:
             self._startup_splash.close()
             self._startup_splash = None
+        # run_melanopsin_gui.py creates the splash's Tk root before this root exists,
+        # so destroying the splash leaves tkinter without a default root. Point it at
+        # the app so both launch paths behave the same for any implicit-master call.
+        if getattr(tk, "_support_default_root", False) and tk._default_root is None:
+            tk._default_root = self
         self.deiconify()
 
     def _load_env(self) -> None:

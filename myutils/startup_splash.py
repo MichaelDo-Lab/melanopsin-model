@@ -6,7 +6,12 @@ free of heavy dependencies so it can appear before ``matplotlib``/``numpy`` are
 imported.
 
 The splash is its own ``tk.Tk()`` root (not a ``Toplevel``) so it stays visible
-even while the main application window is withdrawn.
+even while the main application window is withdrawn. When this splash is created
+before the main app (as ``run_melanopsin_gui.py`` does), it becomes tkinter's
+default root; destroying it then clears ``_default_root``. Callers that create
+the splash first must restore default-root ownership on the app after
+``close()`` (see ``ManuscriptSimApp._finish_startup``), and dialogs should pass
+an explicit ``master``/``root`` rather than relying on the implicit default.
 """
 
 from __future__ import annotations
