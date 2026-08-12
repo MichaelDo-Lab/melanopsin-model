@@ -52,9 +52,11 @@ are display names mapped to those calls.
 - **Monochromatic Spectrum** — single-bin impulse on the model ``wlenshared`` grid at the sample
   nearest your target wavelength (readout shows the resolved nm). Saved entries go
   into the custom spectrum library like file imports.
-- **Mixed Spectrum** — linear combination of library spectra (built-in + custom) with
-  optional normalization of weights to sum 1; preview and **Save to library…** use
-  photon-flux units consistent with the Spectrum Library.
+- **Mixed Spectrum** — linear combination of library spectra (built-in + custom).
+  Each row can optionally be normalized to its peak (default) or integrated photon
+  count before weighting; with neither option selected, raw spectral values are used.
+  Preview and **Save to library…** use photon-flux units consistent with the Spectrum
+  Library when unnormalized.
 
 **Configure menu**
 
@@ -67,10 +69,11 @@ are display names mapped to those calls.
 
 - **Compare saved predictions…** overlays fields from one or more exported (or current)
   model runs on shared axes.
-- **Data Comparator…** overlays experimental data (single-column CSV, 100 Hz sampling)
-  on a model run (current run or saved CSV/NPZ export): data are interpolated onto the
-  model timebase with ``syncTimeseries``, then plotted with ``plotModelVsData``. The
-  model series defaults to ``currentGlobalGain`` but can be changed in the dialog.
+- **Data Comparator…** overlays experimental data (headered or headerless CSV/Excel;
+  time column or user sampling rate) on a model run (current run or saved CSV/NPZ
+  export): data are interpolated onto the model timebase with ``syncTimeseries``,
+  then plotted with ``plotModelVsData``. The model series defaults to
+  ``currentGlobalGain`` but can be changed in the dialog.
 
 **Settings menu**
 
@@ -141,7 +144,8 @@ from myutils.startup_splash import StartupSplash
 # Same rate as Melanopsin_Model_Tutorial.ipynb manuscript cells
 MANUSCRIPT_RATE = 0.005
 
-# Experimental traces in manuscript_figures.ipynb are treated as sampled at 100 Hz
+# Fallback sampling rate (Hz) when a dataset has no time column; used as the
+# SamplingRateDialog prefill and the initial editable rate in Data Comparator.
 DATA_COMPARE_SAMPLE_RATE_HZ = 100.0
 DEFAULT_DATA_COMPARE_SERIES = "currentGlobalGain"
 
@@ -574,6 +578,43 @@ def _resample_spectrum(
     return np.interp(target_wlen, src_wlen[order], src_int[order], left=0.0, right=0.0)
 
 
+def _scale_spectrum_to_integrated_intensity(
+    src_wlen: np.ndarray,
+    src_intensity: np.ndarray,
+    target_intensity: float,
+    *,
+    target_wlen: np.ndarray | None = None,
+    ref_name: str = "spectrum",
+) -> np.ndarray:
+    """Normalize a spectrum and scale so ∫ I(λ) dλ equals ``target_intensity``.
+
+    ``target_intensity`` is total photons/µm²/s. When ``target_wlen`` is given,
+    the spectrum is resampled onto that grid first (model protocol path);
+    otherwise scaling stays on the source wavelength grid (builder preview).
+    """
+    out_wlen = (
+        np.asarray(target_wlen, dtype=float)
+        if target_wlen is not None
+        else np.asarray(src_wlen, dtype=float)
+    )
+    if float(target_intensity) <= 0:
+        return np.zeros_like(out_wlen, dtype=float)
+
+    if target_wlen is not None:
+        resampled = _resample_spectrum(src_wlen, src_intensity, out_wlen)
+    else:
+        resampled = np.asarray(src_intensity, dtype=float)
+
+    dwlen = float(np.mean(np.diff(out_wlen))) if out_wlen.size > 1 else 1.0
+    photon_count = float(np.trapezoid(resampled, out_wlen, dwlen))
+    if not np.isfinite(photon_count) or photon_count <= 0:
+        raise ValueError(
+            f"Spectrum {ref_name!r} integrates to zero photons; "
+            "cannot scale to a positive intensity."
+        )
+    return (resampled / photon_count) * float(target_intensity)
+
+
 def _interval_names_from_spec(spec: dict) -> list[str]:
     """Return one display name per expanded interval in ``spec``."""
     names: list[str] = []
@@ -628,12 +669,50 @@ def _impulse_monochromatic(
     return wlen_grid, intensity
 
 
+_MIX_NORM_NONE = "none"
+_MIX_NORM_INTEGRAL = "integral"
+_MIX_NORM_PEAK = "peak"
+
+
+def _normalize_mix_profile(
+    profile: np.ndarray,
+    wlen: np.ndarray,
+    mode: str,
+    name: str,
+) -> np.ndarray:
+    """Normalize a resampled mix-row profile by peak, integral, or leave raw.
+
+    Zero profiles (denominator exactly 0) are returned unchanged. Non-finite or
+    negative denominators raise ``ValueError`` naming ``name``.
+    """
+    if mode == _MIX_NORM_NONE:
+        return profile
+    if mode == _MIX_NORM_INTEGRAL:
+        denom = float(np.trapezoid(profile, wlen))
+    elif mode == _MIX_NORM_PEAK:
+        denom = float(np.max(profile))
+    else:
+        raise ValueError(f"Unknown mix normalization mode {mode!r}.")
+    if denom == 0.0:
+        return profile
+    if not np.isfinite(denom) or denom < 0:
+        raise ValueError(
+            f"Cannot normalize spectrum {name!r}: "
+            f"denominator must be finite and non-negative (got {denom})."
+        )
+    return profile / denom
+
+
 def _mix_weighted_spectra(
     app: "ManuscriptSimApp",
     rows: list[tuple[str, float]],
-    normalize_weights: bool,
+    norm_mode: str = _MIX_NORM_PEAK,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Linearly combine library spectra (photon flux per nm) on ``wlenshared``."""
+    """Linearly combine library spectra on ``wlenshared``.
+
+    Each row is resampled, optionally normalized (peak or integrated photon
+    count), then multiplied by its weight and summed.
+    """
     env = app._env
     if env is None:
         raise ValueError("Spectra not loaded.")
@@ -642,11 +721,6 @@ def _mix_weighted_spectra(
     weights = [float(w) for _, w in rows]
     if not rows:
         raise ValueError("Add at least one spectrum row.")
-    if normalize_weights:
-        s = float(sum(weights))
-        if s <= 0 or not np.isfinite(s):
-            raise ValueError("Cannot normalize weights: sum must be finite and > 0.")
-        weights = [w / s for w in weights]
     combined = np.zeros_like(target_wlen, dtype=float)
     for name, w in zip(names, weights):
         if w < 0:
@@ -657,7 +731,8 @@ def _mix_weighted_spectra(
                 f"Spectrum {name!r} could not be resolved (environment not loaded?)."
             )
         src_wlen, src_int = data
-        combined += w * _resample_spectrum(src_wlen, src_int, target_wlen)
+        prof = _resample_spectrum(src_wlen, src_int, target_wlen)
+        combined += w * _normalize_mix_profile(prof, target_wlen, norm_mode, name)
     return target_wlen, combined
 
 
@@ -706,19 +781,6 @@ def _build_custom_protocol(
     wlen_rows: list[np.ndarray] = []
     timings: list[tuple[float, float]] = []
 
-    def _scale_to_target(src_wlen, src_intensity, target_intensity, ref_name):
-        if target_intensity <= 0:
-            return np.zeros_like(target_wlen, dtype=float)
-        resampled = _resample_spectrum(src_wlen, src_intensity, target_wlen)
-        dwlen = float(np.mean(np.diff(target_wlen))) if target_wlen.size > 1 else 1.0
-        photon_count = float(np.trapezoid(resampled, target_wlen, dwlen))
-        if not np.isfinite(photon_count) or photon_count <= 0:
-            raise ValueError(
-                f"Spectrum {ref_name!r} integrates to zero photons; "
-                "cannot scale to a positive intensity."
-            )
-        return (resampled / photon_count) * float(target_intensity)
-
     t = 0.0
     for block in blocks:
         if block.get("type") == "interval":
@@ -727,8 +789,12 @@ def _build_custom_protocol(
             target_intensity = float(block["intensity"])
             builtin = _builtin_spectrum_for_protocol(spectrum_name, env)
             if builtin is not None:
-                scaled = _scale_to_target(
-                    target_wlen, builtin, target_intensity, spectrum_name
+                scaled = _scale_spectrum_to_integrated_intensity(
+                    target_wlen,
+                    builtin,
+                    target_intensity,
+                    target_wlen=target_wlen,
+                    ref_name=spectrum_name,
                 )
             else:
                 data = custom_spectra.get(spectrum_name)
@@ -738,8 +804,12 @@ def _build_custom_protocol(
                         "spectrum library; cannot build protocol."
                     )
                 src_wlen, src_int = data
-                scaled = _scale_to_target(
-                    src_wlen, src_int, target_intensity, spectrum_name
+                scaled = _scale_spectrum_to_integrated_intensity(
+                    src_wlen,
+                    src_int,
+                    target_intensity,
+                    target_wlen=target_wlen,
+                    ref_name=spectrum_name,
                 )
             intensities_rows.append(scaled)
             wlen_rows.append(target_wlen.copy())
@@ -955,14 +1025,208 @@ def _default_data_compare_series_name(model: dict) -> str:
     return names[0] if names else ""
 
 
-def _load_single_column_csv_trace(path: str) -> np.ndarray:
-    """Load a single-column numeric CSV trace (same convention as manuscript_figures)."""
-    df = pd.read_csv(path, header=None)
-    col = pd.to_numeric(df.iloc[:, 0], errors="coerce").to_numpy(dtype=float)
-    col = col[np.isfinite(col)]
-    if col.size == 0:
-        raise ValueError("No numeric values in the first column.")
-    return col
+# Normalized base names that identify a time column in a headered dataset.
+_DATA_TIME_ALIASES = frozenset(
+    {
+        "time",
+        "times",
+        "t",
+        "time_s",
+        "timestamp",
+        "sec",
+        "secs",
+        "second",
+        "seconds",
+        "elapsed",
+        "elapsed time",
+    }
+)
+
+# Unit token -> multiplier to convert values to seconds.
+_TIME_UNIT_SCALES: dict[str, float] = {
+    "s": 1.0,
+    "sec": 1.0,
+    "secs": 1.0,
+    "second": 1.0,
+    "seconds": 1.0,
+    "ms": 1e-3,
+    "msec": 1e-3,
+    "msecs": 1e-3,
+    "millisecond": 1e-3,
+    "milliseconds": 1e-3,
+    "us": 1e-6,
+    "usec": 1e-6,
+    "µs": 1e-6,
+    "microsecond": 1e-6,
+    "microseconds": 1e-6,
+    "min": 60.0,
+    "mins": 60.0,
+    "minute": 60.0,
+    "minutes": 60.0,
+    "h": 3600.0,
+    "hr": 3600.0,
+    "hrs": 3600.0,
+    "hour": 3600.0,
+    "hours": 3600.0,
+}
+
+
+def _parse_time_unit_scale(label: str) -> tuple[float, str]:
+    """Infer a seconds-multiplier and display unit from a column header.
+
+    Recognizes trailing parenthesized/bracketed units (``Time (ms)``,
+    ``Time [s]``) and underscore suffixes (``time_ms``, ``time_s``). When no
+    unit is recognized the values are treated as seconds.
+    """
+    text = str(label).strip()
+    lower = text.lower()
+
+    # Trailing (unit) or [unit]
+    m = re.search(r"[\[(]\s*([a-zµμ]+)\s*[\])]\s*$", lower)
+    if m:
+        token = m.group(1).replace("μ", "µ")
+        if token in _TIME_UNIT_SCALES:
+            return _TIME_UNIT_SCALES[token], token
+
+    # Underscore / space suffix: time_ms, time_s, elapsed_min
+    m = re.search(r"[_\s]([a-zµμ]+)\s*$", lower)
+    if m:
+        token = m.group(1).replace("μ", "µ")
+        if token in _TIME_UNIT_SCALES:
+            return _TIME_UNIT_SCALES[token], token
+
+    return 1.0, "s"
+
+
+def _normalize_time_column_base(label: str) -> str:
+    """Strip unit suffixes from a column label for time-alias matching."""
+    text = str(label).strip().lower()
+    # Drop trailing (unit) / [unit]
+    text = re.sub(r"\s*[\[(]\s*[a-zµμ]+\s*[\])]\s*$", "", text)
+    # Drop trailing _unit / space-unit when the token is a known time unit
+    m = re.search(r"^(.*?)[_\s]([a-zµμ]+)\s*$", text)
+    if m and m.group(2).replace("μ", "µ") in _TIME_UNIT_SCALES:
+        text = m.group(1).strip()
+    return text
+
+
+def _is_time_column_name(label: str) -> bool:
+    """True if ``label`` matches a known time-column alias (unit-tolerant)."""
+    base = _normalize_time_column_base(label)
+    if base in _DATA_TIME_ALIASES:
+        return True
+    # Also accept the raw lowercased label (e.g. "time_s" is itself an alias)
+    return str(label).strip().lower() in _DATA_TIME_ALIASES
+
+
+def _trace_columns_look_headerless(columns) -> bool:
+    """True if column labels look like data values rather than names.
+
+    Unlike ``_columns_look_headerless``, this accepts single-column files
+    (legacy manuscript recordings are one bare numeric column).
+    """
+    cols = list(columns)
+    if len(cols) == 0:
+        return False
+    labels = [str(c).strip() for c in cols]
+    if all(lab.lower().startswith("unnamed") for lab in labels):
+        return True
+    try:
+        for lab in labels:
+            float(lab)
+        return True
+    except ValueError:
+        return False
+
+
+def _load_trace_dataframe(path: str, *, header=0) -> "pd.DataFrame":
+    """Load a dataset spreadsheet (CSV/TSV/TXT/Excel) for the Data Comparator."""
+    lower = path.lower()
+    if lower.endswith(".xlsx") or lower.endswith(".xls"):
+        return pd.read_excel(path, header=header)
+    sep = _infer_spectrum_text_sep(path)
+    kwargs: dict = {"header": header, "sep": sep}
+    if sep == r"\s+":
+        kwargs["engine"] = "python"
+    return pd.read_csv(path, **kwargs)
+
+
+def _read_data_trace(path: str) -> dict:
+    """Load an experimental trace for the Data Comparator.
+
+    Returns a dict with:
+      - ``columns``: ordered ``{name: np.ndarray}`` of numeric non-time columns
+        (NaNs retained so time/value rows stay aligned until selection time)
+      - ``time_s``: time in seconds (zero-based), or ``None`` if no time column
+      - ``time_column``: original time column name, or ``None``
+      - ``time_unit_label``: display unit token (e.g. ``"ms"``), or ``None``
+      - ``time_offset_s``: original ``t[0]`` in seconds before zero-basing (0.0
+        when no time column)
+      - ``headerless``: whether the file was treated as headerless
+    """
+    df = _load_trace_dataframe(path, header=0)
+    headerless = False
+    if _trace_columns_look_headerless(df.columns):
+        df = _load_trace_dataframe(path, header=None)
+        headerless = True
+
+    if df.shape[1] == 0 or df.shape[0] == 0:
+        raise ValueError("Dataset file is empty.")
+
+    time_col = None
+    time_s = None
+    time_unit_label = None
+    time_offset_s = 0.0
+
+    if not headerless:
+        for col in df.columns:
+            if _is_time_column_name(str(col)):
+                time_col = col
+                break
+
+    if time_col is not None:
+        scale, time_unit_label = _parse_time_unit_scale(str(time_col))
+        raw_t = pd.to_numeric(df[time_col], errors="coerce").to_numpy(dtype=float)
+        finite = np.isfinite(raw_t)
+        if not np.any(finite):
+            raise ValueError(
+                f"Time column {str(time_col)!r} has no numeric values."
+            )
+        t_scaled = raw_t * scale
+        # Zero-base using the first finite sample so the trace starts at 0 s
+        # (matching the model xaxis convention).
+        first_finite = float(t_scaled[np.argmax(finite)])
+        time_offset_s = first_finite
+        time_s = t_scaled - first_finite
+
+    columns: dict[str, np.ndarray] = {}
+    for col in df.columns:
+        if time_col is not None and col == time_col:
+            continue
+        if headerless and df.shape[1] == 1:
+            name = "value"
+        elif headerless:
+            name = f"column_{int(col) + 1}"
+        else:
+            name = str(col)
+        arr = pd.to_numeric(df[col], errors="coerce").to_numpy(dtype=float)
+        columns[name] = arr
+
+    if not columns:
+        raise ValueError("No numeric data columns found (only a time column?).")
+
+    # Ensure at least one column has some finite values
+    if not any(np.any(np.isfinite(v)) for v in columns.values()):
+        raise ValueError("No numeric values found in data columns.")
+
+    return {
+        "columns": columns,
+        "time_s": time_s,
+        "time_column": str(time_col) if time_col is not None else None,
+        "time_unit_label": time_unit_label,
+        "time_offset_s": float(time_offset_s),
+        "headerless": headerless,
+    }
 
 
 def _build_stimulus(label: str, env: dict):
@@ -1649,9 +1913,24 @@ class StimulusBuilderDialog(tk.Toplevel):
         self.bind("<Right>", self._on_interval_nav_right)
 
         # seed with the first interval
+        self._stimulus_dirty = False
+        self._tracking_edits = False
         self._add_interval()
         self._sync_duration_to_parent()
         self._loaded_source_name: str | None = None
+        self._tracking_edits = True
+
+    def _mark_stimulus_dirty(self) -> None:
+        """Flag the builder as having unsaved edits (ignored during load/init)."""
+        if self._tracking_edits:
+            self._stimulus_dirty = True
+
+    def _mark_stimulus_clean(self) -> None:
+        """Clear the unsaved-edits flag after save or replace-load."""
+        self._stimulus_dirty = False
+
+    def _has_unsaved_stimulus_changes(self) -> bool:
+        return bool(self._stimulus_dirty)
 
     # ── grid layout helpers ──────────────────────────────────────────
 
@@ -2135,6 +2414,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         )
         if not defer_ui_refresh:
             self._refresh_interval_ui()
+        self._mark_stimulus_dirty()
 
     def _add_interval_data(self, spectrum: str, intensity: float, duration: float) -> dict:
         """Append one interval without mounting per-column grid widgets."""
@@ -2218,6 +2498,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         self._render_light_monitor()
         self._render_preview(None)
         self._sync_duration_to_parent()
+        self._mark_stimulus_dirty()
 
     # ── column selection & preview ───────────────────────────────────
 
@@ -2284,7 +2565,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         entry = self._intervals[col_idx]
         if self._interval_is_compact(entry):
             self._selected_col = col_idx
-            self._render_preview(entry["spectrum_var"].get())
+            self._render_interval_preview(entry)
             self._update_monitor_selection_band(col_idx)
             self._ensure_column_visible(col_idx)
             return
@@ -2303,7 +2584,7 @@ class StimulusBuilderDialog(tk.Toplevel):
         for w in entry["widgets"]:
             w.config(bg=self._SELECT_BG)
 
-        self._render_preview(entry["spectrum_var"].get())
+        self._render_interval_preview(entry)
         self._update_monitor_selection_band(col_idx)
         self._ensure_column_visible(col_idx)
 
@@ -2313,7 +2594,23 @@ class StimulusBuilderDialog(tk.Toplevel):
         """Return (wlen, intensity) for a named spectrum, or None if env not loaded."""
         return _library_spectrum_arrays(self._parent, name)
 
-    def _render_preview(self, name: str | None) -> None:
+    def _interval_target_intensity(self, interval: dict) -> float:
+        """Linear integrated intensity for preview scaling; invalid/blank → 0."""
+        intensity = self._parse_interval_intensity_for_monitor(interval)
+        if intensity is None:
+            return 0.0
+        return float(intensity)
+
+    def _render_interval_preview(self, interval: dict) -> None:
+        """Render the spectrum preview scaled to this interval's intensity."""
+        self._render_preview(
+            interval["spectrum_var"].get(),
+            self._interval_target_intensity(interval),
+        )
+
+    def _render_preview(
+        self, name: str | None, target_intensity: float | None = None
+    ) -> None:
         ax = self._preview_ax
         ax.clear()
         ax.set_xlabel("Wavelength (nm)")
@@ -2331,11 +2628,32 @@ class StimulusBuilderDialog(tk.Toplevel):
                         ha="center", va="center", transform=ax.transAxes)
             else:
                 wlen, intensity = result
-                ax.plot(wlen, intensity, color="k")
+                plot_intensity = np.asarray(intensity, dtype=float)
+                if target_intensity is not None:
+                    try:
+                        plot_intensity = _scale_spectrum_to_integrated_intensity(
+                            wlen,
+                            intensity,
+                            float(target_intensity),
+                            ref_name=str(name),
+                        )
+                    except ValueError:
+                        ax.set_title(f"{name}")
+                        ax.text(
+                            0.5,
+                            0.5,
+                            "Cannot scale spectrum to intensity.",
+                            ha="center",
+                            va="center",
+                            transform=ax.transAxes,
+                        )
+                        self._preview_canvas.draw_idle()
+                        return
+                ax.plot(wlen, plot_intensity, color="k")
                 ax.set_title(f"{name}")
                 # Flat/zero spectra (e.g. Dark) otherwise autoscaled symmetrically
                 # around zero; keep zero near the bottom of the pane.
-                imax = float(np.max(intensity)) if intensity.size else 0.0
+                imax = float(np.max(plot_intensity)) if plot_intensity.size else 0.0
                 if not np.isfinite(imax) or imax <= 0.0:
                     ax.set_ylim(-1e-3, 1e-2)
                 else:
@@ -2672,14 +2990,14 @@ class StimulusBuilderDialog(tk.Toplevel):
         else:
             ypad = 0.12 * yspan
         ax.set_ylim(ylo - ypad, yhi + ypad)
-        self._monitor_fig.subplots_adjust(left=0.10, right=0.99, bottom=0.22, top=0.90)
+        self._monitor_fig.subplots_adjust(left=0.16, right=0.99, bottom=0.22, top=0.90)
         self._monitor_xlim_full = tuple(ax.get_xlim())
 
     def _render_light_monitor(self) -> None:
         ax = self._monitor_ax
         ax.clear()
         ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Light")
+        ax.set_ylabel(r"$\mathrm{Log}_{10}$ photons/$\mathrm{\mu m}^{2}$/s")
         self._monitor_selection_patch = None
 
         self._monitor_interval_bounds = self._build_light_monitor_interval_bounds()
@@ -2705,7 +3023,10 @@ class StimulusBuilderDialog(tk.Toplevel):
         ax.plot(x, log_light, color="k", drawstyle="steps-post")
         t_hi = float(np.max(x))
         self._apply_monitor_axis_limits(ax, t_hi, log_light)
-        ax.set_title("Light monitor (scroll to zoom, Shift+scroll to pan)")
+        ax.set_title(
+            "Light monitor (scroll to zoom, Shift+scroll to pan; "
+            "←/→ move between intervals)"
+        )
         if self._selected_col is not None and self._selected_col in valid_cols:
             self._update_monitor_selection_band(self._selected_col)
         else:
@@ -2795,6 +3116,7 @@ class StimulusBuilderDialog(tk.Toplevel):
             if idx is not None:
                 self._apply_dark_intensity_lock(self._intervals[idx], name)
             self._select_column(col_idx)
+            self._mark_stimulus_dirty()
 
         _SpectrumPickerPopup(
             parent=self,
@@ -2969,15 +3291,20 @@ class StimulusBuilderDialog(tk.Toplevel):
             self._row_header_frame.configure(
                 width=max(int(intensity_label.winfo_reqwidth()), 1)
             )
-        for interval in self._intervals:
-            if str(interval["spectrum_var"].get()).strip() == "Dark":
-                interval["intensity_var"].set("0")
-                continue
-            raw = interval["intensity_var"].get().strip()
-            linear_val = self._intensity_from_raw_with_mode(raw, old_mode)
-            if linear_val is None:
-                continue
-            interval["intensity_var"].set(self._format_intensity_for_display(linear_val))
+        was_tracking = self._tracking_edits
+        self._tracking_edits = False
+        try:
+            for interval in self._intervals:
+                if str(interval["spectrum_var"].get()).strip() == "Dark":
+                    interval["intensity_var"].set("0")
+                    continue
+                raw = interval["intensity_var"].get().strip()
+                linear_val = self._intensity_from_raw_with_mode(raw, old_mode)
+                if linear_val is None:
+                    continue
+                interval["intensity_var"].set(self._format_intensity_for_display(linear_val))
+        finally:
+            self._tracking_edits = was_tracking
         self._render_light_monitor()
 
     def _on_interval_numeric_change(
@@ -2998,7 +3325,10 @@ class StimulusBuilderDialog(tk.Toplevel):
         else:
             self._validate_float(var)
         self._render_light_monitor()
+        if self._selected_col is not None and self._selected_col < len(self._intervals):
+            self._render_interval_preview(self._intervals[self._selected_col])
         self._sync_duration_to_parent()
+        self._mark_stimulus_dirty()
 
     # ── stimulus save / load ─────────────────────────────────────────
 
@@ -3124,6 +3454,8 @@ class StimulusBuilderDialog(tk.Toplevel):
             messagebox.showerror("Save stimulus", str(exc), parent=self)
             return
         self._parent._set_selected_stimulus(name)
+        self._loaded_source_name = name
+        self._mark_stimulus_clean()
         messagebox.showinfo(
             "Save stimulus",
             f"Saved stimulus {name!r}. It now appears in the run dropdown.",
@@ -3413,6 +3745,29 @@ class StimulusBuilderDialog(tk.Toplevel):
 
         Returns ``False`` if the user cancelled a large-load prompt.
         """
+        was_tracking = self._tracking_edits
+        self._tracking_edits = False
+        try:
+            return self._populate_grid_from_spec_impl(
+                spec, source_name=source_name, append=append
+            )
+        finally:
+            self._tracking_edits = was_tracking
+
+    def _populate_grid_from_spec_impl(
+        self,
+        spec: dict,
+        source_name: str | None = None,
+        *,
+        append: bool = False,
+    ) -> bool:
+        """Load a v2 block-based stimulus spec into the grid (replace or append).
+
+        Interval blocks render as columns or compact rows under the same
+        threshold as before.
+
+        Returns ``False`` if the user cancelled a large-load prompt.
+        """
         blocks = spec.get("blocks")
         if not isinstance(blocks, list) or not blocks:
             raise ValueError("Stimulus spec has no blocks.")
@@ -3481,10 +3836,24 @@ class StimulusBuilderDialog(tk.Toplevel):
         self._update_compact_grid_display()
         self._refresh_interval_ui()
         self._render_preview(None)
+        # Replace-load matches library/manuscript content; append is an unsaved edit.
+        if append:
+            self._stimulus_dirty = True
+        else:
+            self._mark_stimulus_clean()
         return True
 
 
     def _on_close(self) -> None:
+        if self._has_unsaved_stimulus_changes():
+            discard = messagebox.askyesno(
+                "Unsaved changes",
+                "The stimulus has unsaved changes.\n\n"
+                "Close the Stimulus Builder and discard them?",
+                parent=self,
+            )
+            if not discard:
+                return
         try:
             plt.close(self._monitor_fig)
         except Exception:
@@ -3659,102 +4028,6 @@ class AutoSaveOptionsDialog(tk.Toplevel):
 _GITHUB_REPO_URL = "https://github.com/Do-Laboratory/melanopsin-model"
 
 
-class StimulusSelectorPopup(tk.Toplevel):
-    """Custom stimulus selector with fixed Add button."""
-
-    def __init__(self, parent: "ManuscriptSimApp") -> None:
-        super().__init__(parent)
-        self.title("Select stimulus")
-        self._parent = parent
-        self.transient(parent)
-
-        outer = ttk.Frame(self, padding=8)
-        outer.pack(fill=tk.BOTH, expand=True)
-
-        list_frame = ttk.Frame(outer)
-        list_frame.pack(fill=tk.BOTH, expand=True)
-        self._listbox = tk.Listbox(list_frame, height=8, exportselection=False)
-        self._listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar = ttk.Scrollbar(
-            list_frame, orient=tk.VERTICAL, command=self._listbox.yview
-        )
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self._listbox.configure(yscrollcommand=scrollbar.set)
-        self._refresh_list()
-
-        self._listbox.bind("<Double-Button-1>", self._on_choose_event)
-        self._listbox.bind("<Return>", self._on_choose_event)
-
-        btn_row = ttk.Frame(outer, padding=(0, 8, 0, 0))
-        btn_row.pack(fill=tk.X)
-        ttk.Button(
-            btn_row, text="Make Custom Stimulus", command=self._on_make_custom_stimulus
-        ).pack(side=tk.LEFT)
-        ttk.Button(
-            btn_row, text="Delete stimulus", command=self._on_delete_stimulus
-        ).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(btn_row, text="Cancel", command=self._on_close).pack(side=tk.RIGHT)
-        ttk.Button(btn_row, text="Select", command=self._on_choose).pack(
-            side=tk.RIGHT, padx=(0, 8)
-        )
-
-        self.minsize(320, 260)
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def _refresh_list(self) -> None:
-        previous = None
-        sel = self._listbox.curselection()
-        if sel:
-            previous = str(self._listbox.get(sel[0]))
-        else:
-            current = self._parent._selected_stimulus_var.get()
-            if current in self._parent._known_stimuli:
-                previous = current
-        self._listbox.delete(0, tk.END)
-        for label in self._parent._known_stimuli:
-            self._listbox.insert(tk.END, label)
-        if previous and previous in self._parent._known_stimuli:
-            idx = self._parent._known_stimuli.index(previous)
-            self._listbox.selection_set(idx)
-            self._listbox.see(idx)
-
-    def _on_choose_event(self, _event=None) -> None:
-        self._on_choose()
-
-    def _on_choose(self) -> None:
-        sel = self._listbox.curselection()
-        if not sel:
-            return
-        label = self._listbox.get(sel[0])
-        self._parent._set_selected_stimulus(label)
-        self._on_close()
-
-    def _on_make_custom_stimulus(self) -> None:
-        self._parent._open_stimulus_creator()
-
-    def _on_delete_stimulus(self) -> None:
-        sel = self._listbox.curselection()
-        if not sel:
-            messagebox.showinfo("Delete stimulus", "Select a stimulus to delete.")
-            return
-        idx = sel[0]
-        label = str(self._listbox.get(idx))
-        ok = messagebox.askyesno(
-            "Delete stimulus",
-            f"Remove {label!r} from known stimuli?",
-            parent=self,
-        )
-        if not ok:
-            return
-        self._parent.start_remove_known_stimulus(
-            label, parent=self, on_success=self._refresh_list
-        )
-
-    def _on_close(self) -> None:
-        self._parent._stimulus_selector = None
-        self.destroy()
-
-
 class StimulusDeleteProgressDialog(tk.Toplevel):
     """Progress window shown while a stimulus is deleted from disk."""
 
@@ -3853,6 +4126,11 @@ class StimulusLibraryPopup(tk.Toplevel):
             btn_row,
             text="Import Stimulus",
             command=self._parent._on_file_import_stimulus,
+        ).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(
+            btn_row,
+            text="Make Custom Stimulus",
+            command=self._parent._open_stimulus_creator,
         ).pack(side=tk.LEFT, padx=(8, 0))
 
         panes = ttk.Frame(outer)
@@ -4526,8 +4804,115 @@ class PredictionComparisonDialog(tk.Toplevel):
         self.destroy()
 
 
+class SamplingRateDialog(tk.Toplevel):
+    """Modal prompt for the sampling rate of a dataset with no time column.
+
+    The chosen rate in Hz is available in ``self.result`` after the dialog
+    closes (``None`` when cancelled). The user may enter either Hz or a
+    sample interval in seconds.
+    """
+
+    _MODE_HZ = "hz"
+    _MODE_DT = "dt"
+
+    def __init__(self, parent, default_hz: float = DATA_COMPARE_SAMPLE_RATE_HZ):
+        super().__init__(parent)
+        self.result: float | None = None
+        self.title("Sampling rate")
+        self.transient(parent)
+        self.resizable(False, False)
+
+        self._mode_var = tk.StringVar(master=self, value=self._MODE_HZ)
+        self._value_var = tk.StringVar(master=self, value=f"{float(default_hz):g}")
+
+        frame = ttk.Frame(self, padding=16)
+        frame.grid(row=0, column=0, sticky=tk.NSEW)
+
+        ttk.Label(
+            frame,
+            text=(
+                "No time column was found in this dataset.\n"
+                "Enter the sampling rate so a time base can be built."
+            ),
+            justify=tk.LEFT,
+        ).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 12))
+
+        ttk.Radiobutton(
+            frame,
+            text="Sampling rate (Hz)",
+            value=self._MODE_HZ,
+            variable=self._mode_var,
+        ).grid(row=1, column=0, sticky=tk.W)
+        ttk.Radiobutton(
+            frame,
+            text="Sample interval (s)",
+            value=self._MODE_DT,
+            variable=self._mode_var,
+        ).grid(row=2, column=0, sticky=tk.W)
+
+        ttk.Entry(frame, textvariable=self._value_var, width=18).grid(
+            row=1, column=1, rowspan=2, sticky=tk.W, padx=(12, 0)
+        )
+
+        button_row = ttk.Frame(frame)
+        button_row.grid(row=3, column=0, columnspan=2, sticky=tk.E, pady=(16, 0))
+        ttk.Button(button_row, text="OK", command=self._on_ok).grid(
+            row=0, column=0, padx=(0, 6)
+        )
+        ttk.Button(button_row, text="Cancel", command=self._on_cancel).grid(
+            row=0, column=1
+        )
+
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self.bind("<Return>", lambda _e: self._on_ok())
+        self.bind("<Escape>", lambda _e: self._on_cancel())
+        self.grab_set()
+        self.wait_window()
+
+    def _on_ok(self) -> None:
+        raw = self._value_var.get().strip()
+        try:
+            value = float(raw)
+        except ValueError:
+            messagebox.showwarning(
+                "Sampling rate",
+                "Enter a positive number.",
+                parent=self,
+            )
+            return
+        if not np.isfinite(value) or value <= 0:
+            messagebox.showwarning(
+                "Sampling rate",
+                "Enter a positive number.",
+                parent=self,
+            )
+            return
+        if self._mode_var.get() == self._MODE_DT:
+            rate_hz = 1.0 / value
+        else:
+            rate_hz = value
+        self.result = float(rate_hz)
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+
+def _prompt_sampling_rate(
+    parent, default_hz: float = DATA_COMPARE_SAMPLE_RATE_HZ
+) -> float | None:
+    """Show the sampling-rate dialog; return Hz or None if cancelled."""
+    return SamplingRateDialog(parent, default_hz=default_hz).result
+
+
 class DataComparatorDialog(tk.Toplevel):
-    """Compare a 100 Hz single-column CSV trace to a model run via ``plotModelVsData``."""
+    """Compare an experimental data trace to a model run via ``plotModelVsData``.
+
+    Datasets may include a ``time`` column (units inferred from the header) or
+    a user-supplied sampling rate. Multiple data columns are supported via a
+    column picker.
+    """
 
     def __init__(self, parent: "ManuscriptSimApp") -> None:
         super().__init__(parent)
@@ -4536,7 +4921,14 @@ class DataComparatorDialog(tk.Toplevel):
         self.transient(parent)
 
         self._runs: list[dict] = []
-        self._dataset_raw: np.ndarray | None = None
+        self._dataset_columns: dict[str, np.ndarray] | None = None
+        self._dataset_time_s: np.ndarray | None = None
+        self._dataset_rate_hz: float | None = None
+        self._dataset_path: str | None = None
+        self._dataset_time_source: str | None = None  # "column" | "rate" | None
+        self._dataset_time_column: str | None = None
+        self._dataset_time_unit_label: str | None = None
+        self._dataset_time_offset_s: float = 0.0
         self._compare_fig = None
         self._fig_placeholder: plt.Figure | None = None
 
@@ -4588,13 +4980,33 @@ class DataComparatorDialog(tk.Toplevel):
         )
         self._series_combo.pack(fill=tk.X, pady=(2, 8))
 
-        ds_frame = ttk.LabelFrame(
-            left, text="Dataset (100 Hz, 1 column CSV)", padding=6
-        )
+        ds_frame = ttk.LabelFrame(left, text="Dataset", padding=6)
         ds_frame.pack(fill=tk.X, pady=(0, 8))
         ttk.Button(
-            ds_frame, text="Load dataset CSV…", command=self._on_load_dataset
+            ds_frame, text="Load dataset…", command=self._on_load_dataset
         ).pack(anchor=tk.W)
+
+        col_row = ttk.Frame(ds_frame)
+        col_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(col_row, text="Data column").pack(side=tk.LEFT)
+        self._data_col_var = tk.StringVar(master=self, value="")
+        self._data_col_combo = ttk.Combobox(
+            col_row,
+            textvariable=self._data_col_var,
+            state="disabled",
+            width=22,
+        )
+        self._data_col_combo.pack(side=tk.LEFT, padx=(6, 0), fill=tk.X, expand=True)
+
+        rate_row = ttk.Frame(ds_frame)
+        rate_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(rate_row, text="Sampling rate (Hz)").pack(side=tk.LEFT)
+        self._rate_var = tk.StringVar(master=self, value="")
+        self._rate_entry = ttk.Entry(
+            rate_row, textvariable=self._rate_var, width=12, state="disabled"
+        )
+        self._rate_entry.pack(side=tk.LEFT, padx=(6, 0))
+
         self._dataset_status = tk.StringVar(
             master=self, value="No dataset loaded."
         )
@@ -4746,16 +5158,58 @@ class DataComparatorDialog(tk.Toplevel):
         self._series_var.set("")
         self._render_placeholder("Add a model run and dataset, then click Plot.")
 
+    def _update_dataset_status(self) -> None:
+        if not self._dataset_columns or not self._dataset_path:
+            self._dataset_status.set("No dataset loaded.")
+            return
+        name = Path(self._dataset_path).name
+        n_cols = len(self._dataset_columns)
+        col = self._data_col_var.get().strip()
+        n_samples = (
+            int(np.sum(np.isfinite(self._dataset_columns[col])))
+            if col in self._dataset_columns
+            else 0
+        )
+        if self._dataset_time_source == "column" and self._dataset_time_s is not None:
+            finite_t = self._dataset_time_s[np.isfinite(self._dataset_time_s)]
+            t0 = float(finite_t[0]) if finite_t.size else 0.0
+            t1 = float(finite_t[-1]) if finite_t.size else 0.0
+            unit = self._dataset_time_unit_label or "s"
+            tcol = self._dataset_time_column or "time"
+            offset_note = ""
+            if abs(self._dataset_time_offset_s) > 1e-12:
+                offset_note = f", file start {self._dataset_time_offset_s:g} s"
+            self._dataset_status.set(
+                f"{name}: {n_cols} column(s), {n_samples} samples; "
+                f"time from {tcol!r} ({unit}) "
+                f"{t0:.2f}–{t1:.2f} s{offset_note}"
+            )
+        elif self._dataset_rate_hz is not None:
+            self._dataset_status.set(
+                f"{name}: {n_cols} column(s), {n_samples} samples @ "
+                f"{self._dataset_rate_hz:g} Hz (entered)"
+            )
+        else:
+            self._dataset_status.set(
+                f"{name}: {n_cols} column(s), {n_samples} samples"
+            )
+
     def _on_load_dataset(self) -> None:
         path = filedialog.askopenfilename(
             parent=self,
-            title="Select dataset CSV (single column)",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            title="Select dataset file",
+            filetypes=[
+                ("Spreadsheets", "*.csv *.tsv *.txt *.xlsx *.xls"),
+                ("CSV files", "*.csv"),
+                ("Excel files", "*.xlsx *.xls"),
+                ("TSV / text files", "*.tsv *.txt"),
+                ("All files", "*.*"),
+            ],
         )
         if not path:
             return
         try:
-            raw = _load_single_column_csv_trace(str(path))
+            loaded = _read_data_trace(str(path))
         except Exception as exc:
             messagebox.showerror(
                 "Data Comparator",
@@ -4763,10 +5217,87 @@ class DataComparatorDialog(tk.Toplevel):
                 parent=self,
             )
             return
-        self._dataset_raw = raw
-        self._dataset_status.set(
-            f"{Path(path).name}: {raw.size} samples @ {DATA_COMPARE_SAMPLE_RATE_HZ:g} Hz"
+
+        time_s = loaded.get("time_s")
+        rate_hz: float | None = None
+        time_source: str
+
+        if time_s is None:
+            rate = _prompt_sampling_rate(self, default_hz=DATA_COMPARE_SAMPLE_RATE_HZ)
+            if rate is None:
+                # Cancel: leave any previously loaded dataset intact.
+                return
+            rate_hz = float(rate)
+            time_source = "rate"
+        else:
+            time_source = "column"
+            finite_t = np.asarray(time_s, dtype=float)
+            finite_t = finite_t[np.isfinite(finite_t)]
+            if finite_t.size >= 2:
+                dt = np.diff(finite_t)
+                dt = dt[np.isfinite(dt) & (dt > 0)]
+                if dt.size:
+                    rate_hz = float(1.0 / np.mean(dt))
+
+        # Commit loaded state only after a successful rate prompt (if needed).
+        self._dataset_columns = loaded["columns"]
+        self._dataset_time_s = (
+            np.asarray(time_s, dtype=float) if time_s is not None else None
         )
+        self._dataset_rate_hz = rate_hz
+        self._dataset_path = str(path)
+        self._dataset_time_source = time_source
+        self._dataset_time_column = loaded.get("time_column")
+        self._dataset_time_unit_label = loaded.get("time_unit_label")
+        self._dataset_time_offset_s = float(loaded.get("time_offset_s") or 0.0)
+
+        col_names = list(self._dataset_columns.keys())
+        self._data_col_combo.configure(values=col_names, state="readonly")
+        self._data_col_var.set(col_names[0] if col_names else "")
+
+        if time_source == "column":
+            self._rate_entry.configure(state="normal")
+            self._rate_var.set(f"{rate_hz:g}" if rate_hz is not None else "")
+            self._rate_entry.configure(state="disabled")
+        else:
+            self._rate_entry.configure(state="normal")
+            self._rate_var.set(f"{rate_hz:g}" if rate_hz is not None else "")
+
+        self._update_dataset_status()
+
+    def _selected_dataset_trace(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return (values, time_s) for the currently selected data column.
+
+        Applies a joint finite mask over time and values so rows stay aligned.
+        """
+        if not self._dataset_columns:
+            raise ValueError("No dataset loaded.")
+        col = self._data_col_var.get().strip()
+        if not col or col not in self._dataset_columns:
+            raise ValueError("Choose a data column from the dropdown.")
+        values = np.asarray(self._dataset_columns[col], dtype=float).ravel()
+
+        if self._dataset_time_source == "column" and self._dataset_time_s is not None:
+            time_s = np.asarray(self._dataset_time_s, dtype=float).ravel()
+            if time_s.shape != values.shape:
+                raise ValueError("Time and data columns have different lengths.")
+        else:
+            rate_txt = self._rate_var.get().strip()
+            try:
+                rate_hz = float(rate_txt) if rate_txt else float(self._dataset_rate_hz or 0)
+            except ValueError as exc:
+                raise ValueError("Sampling rate must be a positive number.") from exc
+            if not np.isfinite(rate_hz) or rate_hz <= 0:
+                raise ValueError("Sampling rate must be a positive number.")
+            self._dataset_rate_hz = rate_hz
+            time_s = np.arange(values.size, dtype=float) / rate_hz
+
+        mask = np.isfinite(values) & np.isfinite(time_s)
+        values = values[mask]
+        time_s = time_s[mask]
+        if values.size == 0:
+            raise ValueError("No finite samples in the selected column.")
+        return values, time_s
 
     def _close_compare_figure(self) -> None:
         for fig in (self._compare_fig,):
@@ -4794,16 +5325,20 @@ class DataComparatorDialog(tk.Toplevel):
                 parent=self,
             )
             return
-        if self._dataset_raw is None:
+        if not self._dataset_columns:
             messagebox.showinfo(
                 "Data Comparator",
-                "Load a single-column CSV dataset first.",
+                "Load a dataset file first.",
                 parent=self,
             )
             return
 
-        raw = np.asarray(self._dataset_raw, dtype=float).ravel()
-        data_timebase = np.arange(len(raw), dtype=float) / DATA_COMPARE_SAMPLE_RATE_HZ
+        try:
+            raw, data_timebase = self._selected_dataset_trace()
+        except ValueError as exc:
+            messagebox.showinfo("Data Comparator", str(exc), parent=self)
+            return
+
         xaxis = np.asarray(model["xaxis"], dtype=float)
         pred = np.asarray(model[series], dtype=float)
         if pred.shape != xaxis.shape:
@@ -4899,7 +5434,8 @@ class SpectrumBuilderDialog(tk.Toplevel):
         self.transient(parent)
         self._mono_peak = tk.StringVar(master=self, value="550.0")
         self._mono_resolved = tk.StringVar(master=self, value="—")
-        self._mix_normalize = tk.BooleanVar(master=self, value=False)
+        self._mix_norm_integral = tk.BooleanVar(master=self, value=False)
+        self._mix_norm_peak = tk.BooleanVar(master=self, value=True)
         self._mix_rows: list[dict] = []
         self._notebook: ttk.Notebook | None = None
         self._mono_fig = None
@@ -4936,13 +5472,10 @@ class SpectrumBuilderDialog(tk.Toplevel):
         ttk.Label(row_peak, text="Target wavelength (nm):").pack(side=tk.LEFT)
         ent_peak = ttk.Entry(row_peak, textvariable=self._mono_peak, width=14)
         ent_peak.pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(row_peak, text="Update preview", command=self._update_mono_preview).pack(
-            side=tk.LEFT, padx=(12, 0)
-        )
         ttk.Label(mono, textvariable=self._mono_resolved, wraplength=520).pack(
             anchor=tk.W, pady=(6, 0)
         )
-        ent_peak.bind("<KeyRelease>", lambda _e: self._try_mono_preview())
+        self._mono_peak.trace_add("write", lambda *_: self._try_mono_preview())
         mono_plot = ttk.Frame(mono)
         mono_plot.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
         self._mono_fig = plt.Figure(figsize=(5.2, 3.2), tight_layout=True)
@@ -4959,17 +5492,23 @@ class SpectrumBuilderDialog(tk.Toplevel):
         mix_top.pack(fill=tk.X)
         ttk.Checkbutton(
             mix_top,
-            text="Normalize weights to sum 1",
-            variable=self._mix_normalize,
+            text="Normalize rows to integrated photon count",
+            variable=self._mix_norm_integral,
+            command=lambda: self._on_mix_norm_toggle(_MIX_NORM_INTEGRAL),
         ).pack(side=tk.LEFT)
-        ttk.Button(mix_top, text="Add row", command=self._add_mix_row).pack(
-            side=tk.LEFT, padx=(16, 4)
-        )
-        ttk.Button(mix_top, text="Remove last row", command=self._remove_mix_row).pack(
+        ttk.Checkbutton(
+            mix_top,
+            text="Normalize rows to peak",
+            variable=self._mix_norm_peak,
+            command=lambda: self._on_mix_norm_toggle(_MIX_NORM_PEAK),
+        ).pack(side=tk.LEFT, padx=(12, 0))
+        mix_btns = ttk.Frame(mix)
+        mix_btns.pack(fill=tk.X, pady=(6, 0))
+        ttk.Button(mix_btns, text="Add row", command=self._add_mix_row).pack(
             side=tk.LEFT
         )
-        ttk.Button(mix_top, text="Update preview", command=self._update_mix_preview).pack(
-            side=tk.LEFT, padx=(12, 0)
+        ttk.Button(mix_btns, text="Remove last row", command=self._remove_mix_row).pack(
+            side=tk.LEFT, padx=(4, 0)
         )
         self._mix_rows_host = ttk.Frame(mix)
         self._mix_rows_host.pack(fill=tk.X, pady=(8, 0))
@@ -4985,7 +5524,6 @@ class SpectrumBuilderDialog(tk.Toplevel):
 
         self._add_mix_row()
         self._try_mono_preview()
-        self._update_mix_preview()
 
         nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
@@ -5036,24 +5574,6 @@ class SpectrumBuilderDialog(tk.Toplevel):
         ax.set_title("Monochromatic impulse")
         self._mono_canvas.draw_idle()
 
-    def _update_mono_preview(self) -> None:
-        if self._mono_ax is None or self._parent._env is None:
-            return
-        try:
-            peak = float(self._mono_peak.get().strip())
-        except ValueError:
-            messagebox.showerror(
-                "Monochromatic", "Enter a numeric wavelength (nm).", parent=self
-            )
-            return
-        wlen = np.asarray(self._parent._env["wlenshared"], dtype=float)
-        try:
-            _impulse_monochromatic(wlen, peak)
-        except ValueError as exc:
-            messagebox.showerror("Monochromatic", str(exc), parent=self)
-            return
-        self._try_mono_preview()
-
     def _on_save_mono(self) -> None:
         env = self._parent._env
         if env is None or self._mono_ax is None:
@@ -5098,11 +5618,14 @@ class SpectrumBuilderDialog(tk.Toplevel):
         if vals:
             cb.set(vals[0])
         cb.pack(side=tk.LEFT)
+        cb.bind("<<ComboboxSelected>>", lambda _e: self._update_mix_preview())
         ttk.Label(rowf, text="Weight:").pack(side=tk.LEFT, padx=(8, 2))
         wvar = tk.StringVar(master=self, value="1.0")
         ttk.Entry(rowf, textvariable=wvar, width=10).pack(side=tk.LEFT)
+        wvar.trace_add("write", lambda *_: self._update_mix_preview())
         self._mix_rows.append({"frame": rowf, "combo": cb, "weight": wvar})
         self._refresh_mix_row_combos()
+        self._update_mix_preview()
 
     def _remove_mix_row(self) -> None:
         if len(self._mix_rows) <= 1:
@@ -5112,6 +5635,7 @@ class SpectrumBuilderDialog(tk.Toplevel):
             return
         last = self._mix_rows.pop()
         last["frame"].destroy()
+        self._update_mix_preview()
 
     def _collect_mix_rows(self) -> list[tuple[str, float]]:
         out: list[tuple[str, float]] = []
@@ -5130,24 +5654,44 @@ class SpectrumBuilderDialog(tk.Toplevel):
             raise ValueError("Add at least one spectrum row with a name and weight.")
         return out
 
+    def _mix_norm_mode(self) -> str:
+        if self._mix_norm_peak.get():
+            return _MIX_NORM_PEAK
+        if self._mix_norm_integral.get():
+            return _MIX_NORM_INTEGRAL
+        return _MIX_NORM_NONE
+
+    def _on_mix_norm_toggle(self, mode: str) -> None:
+        if mode == _MIX_NORM_PEAK and self._mix_norm_peak.get():
+            self._mix_norm_integral.set(False)
+        elif mode == _MIX_NORM_INTEGRAL and self._mix_norm_integral.get():
+            self._mix_norm_peak.set(False)
+        self._update_mix_preview()
+
     def _update_mix_preview(self) -> None:
+        """Redraw the mixture preview; ignore transient invalid edits silently."""
         if self._mix_ax is None:
             return
         try:
             rows = self._collect_mix_rows()
-            wlen, comb = _mix_weighted_spectra(
-                self._parent, rows, self._mix_normalize.get()
-            )
-        except ValueError as exc:
-            messagebox.showerror("Mixture", str(exc), parent=self)
+            mode = self._mix_norm_mode()
+            wlen, comb = _mix_weighted_spectra(self._parent, rows, mode)
+        except ValueError:
             return
         ax = self._mix_ax
         ax.clear()
         ax.plot(wlen, comb, color="k")
         ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Intensity (photons/\u00b5m\u00b2/nm/s)")
+        if mode == _MIX_NORM_INTEGRAL:
+            ax.set_ylabel("Normalized intensity (1/nm)")
+        elif mode == _MIX_NORM_PEAK:
+            ax.set_ylabel("Normalized intensity (peak = 1)")
+        else:
+            ax.set_ylabel("Intensity (photons/\u00b5m\u00b2/nm/s)")
+            ax.ticklabel_format(
+                axis="y", style="scientific", scilimits=(0, 0), useMathText=True
+            )
         ax.set_title("Weighted mixture")
-        ax.ticklabel_format(axis="y", style="scientific", scilimits=(0, 0), useMathText=True)
         self._mix_canvas.draw_idle()
 
     def _on_save_mix(self) -> None:
@@ -5156,7 +5700,7 @@ class SpectrumBuilderDialog(tk.Toplevel):
         try:
             rows = self._collect_mix_rows()
             wlen, comb = _mix_weighted_spectra(
-                self._parent, rows, self._mix_normalize.get()
+                self._parent, rows, self._mix_norm_mode()
             )
         except ValueError as exc:
             messagebox.showerror("Mixture", str(exc), parent=self)
@@ -5177,6 +5721,7 @@ class SpectrumBuilderDialog(tk.Toplevel):
             return
         self._parent._register_custom_spectrum(name.strip(), wlen, comb, parent=self)
         self._refresh_mix_row_combos()
+        self._update_mix_preview()
 
     def _on_close(self) -> None:
         for fig in (self._mono_fig, self._mix_fig):
@@ -5186,6 +5731,147 @@ class SpectrumBuilderDialog(tk.Toplevel):
                 except Exception:
                     pass
         self._parent._spectrum_builder_dialog = None
+        self.destroy()
+
+
+class SpectrumDeleteConflictDialog(tk.Toplevel):
+    """Warn that deleting a spectrum will break stimulus protocols; offer resolution."""
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        app: "ManuscriptSimApp",
+        spectrum_name: str,
+        affected: list[str],
+    ) -> None:
+        super().__init__(parent)
+        self.title("Delete Spectrum")
+        self.transient(parent)
+        self.resizable(False, False)
+        self.result: tuple[str, str | None] | None = None
+        self._spectrum_name = spectrum_name
+        self._app = app
+
+        replacements: list[str] = []
+        for name in _SPECTRUM_LIBRARY_ENTRIES:
+            if name in app._hidden_builtin_spectra:
+                continue
+            if name == spectrum_name:
+                continue
+            replacements.append(name)
+        for name in app._custom_spectra:
+            if name == spectrum_name:
+                continue
+            if name not in replacements:
+                replacements.append(name)
+
+        outer = ttk.Frame(self, padding=10)
+        outer.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(
+            outer,
+            text=(
+                f"Spectrum {spectrum_name!r} is used by the stimulus protocol(s) "
+                "listed below. Deleting it without resolving these references will "
+                "break those protocols."
+            ),
+            wraplength=420,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W)
+
+        list_frame = ttk.Frame(outer, padding=(0, 8, 0, 0))
+        list_frame.pack(fill=tk.BOTH, expand=True)
+        self._listbox = tk.Listbox(
+            list_frame, height=min(8, max(3, len(affected))), exportselection=False, width=42
+        )
+        self._listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self._listbox.yview)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        self._listbox.configure(yscrollcommand=sb.set)
+        for name in affected:
+            self._listbox.insert(tk.END, name)
+
+        self._action_var = tk.StringVar(master=self, value="delete_stimuli")
+        opts = ttk.Frame(outer, padding=(0, 8, 0, 0))
+        opts.pack(fill=tk.X)
+
+        ttk.Radiobutton(
+            opts,
+            text="Delete these stimulus protocols",
+            variable=self._action_var,
+            value="delete_stimuli",
+            command=self._on_action_changed,
+        ).pack(anchor=tk.W)
+
+        replace_row = ttk.Frame(opts)
+        replace_row.pack(anchor=tk.W, fill=tk.X, pady=(4, 0))
+        ttk.Radiobutton(
+            replace_row,
+            text="Replace it in these protocols with:",
+            variable=self._action_var,
+            value="replace",
+            command=self._on_action_changed,
+        ).pack(side=tk.LEFT)
+        self._replace_var = tk.StringVar(master=self, value=replacements[0] if replacements else "")
+        self._replace_combo = ttk.Combobox(
+            replace_row,
+            textvariable=self._replace_var,
+            values=replacements,
+            state="disabled",
+            width=22,
+        )
+        self._replace_combo.pack(side=tk.LEFT, padx=(8, 0))
+        self._replacements = replacements
+
+        btn_row = ttk.Frame(outer, padding=(0, 12, 0, 0))
+        btn_row.pack(fill=tk.X)
+        self._confirm_btn = ttk.Button(
+            btn_row, text="Delete Spectrum", command=self._on_confirm
+        )
+        self._confirm_btn.pack(side=tk.LEFT)
+        ttk.Button(btn_row, text="Cancel", command=self._on_cancel).pack(side=tk.RIGHT)
+
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self.grab_set()
+        self.wait_window(self)
+
+    def _on_action_changed(self) -> None:
+        if self._action_var.get() == "replace":
+            self._confirm_btn.configure(text="Replace and Delete")
+            if self._replacements:
+                self._replace_combo.configure(state="readonly")
+            else:
+                self._replace_combo.configure(state="disabled")
+        else:
+            self._confirm_btn.configure(text="Delete Spectrum")
+            self._replace_combo.configure(state="disabled")
+
+    def _on_confirm(self) -> None:
+        action = self._action_var.get()
+        if action == "delete_stimuli":
+            self.result = ("delete_stimuli", None)
+            self.destroy()
+            return
+        if action == "replace":
+            replacement = str(self._replace_var.get()).strip()
+            if not replacement or replacement not in self._replacements:
+                messagebox.showinfo(
+                    "Delete Spectrum",
+                    "Select a replacement spectrum.",
+                    parent=self,
+                )
+                return
+            self.result = ("replace", replacement)
+            self.destroy()
+            return
+        messagebox.showinfo(
+            "Delete Spectrum",
+            "Choose how to resolve the affected stimulus protocols.",
+            parent=self,
+        )
+
+    def _on_cancel(self) -> None:
+        self.result = None
         self.destroy()
 
 
@@ -5383,13 +6069,21 @@ class SpectrumLibraryPopup(tk.Toplevel):
                 parent=self,
             )
             return
-        ok = messagebox.askyesno(
-            "Delete Spectrum",
-            f"Are you sure you want to delete spectrum {name!r}?",
-            parent=self,
-        )
-        if not ok:
-            return
+        affected = self._parent._stimuli_using_spectrum(name)
+        if affected:
+            dlg = SpectrumDeleteConflictDialog(self, self._parent, name, affected)
+            if dlg.result is None:
+                return
+            if not self._parent._apply_spectrum_delete_resolution(name, affected, dlg.result):
+                return
+        else:
+            ok = messagebox.askyesno(
+                "Delete Spectrum",
+                f"Are you sure you want to delete spectrum {name!r}?",
+                parent=self,
+            )
+            if not ok:
+                return
         if not self._parent._delete_spectrum(name):
             return
         if name in self._all_spectrum_names:
@@ -5678,7 +6372,6 @@ class ManuscriptSimApp(tk.Tk):
         self._config_dialog: ModelConfigDialog | None = None
         self._custom_stim_dialog: CustomStimulusDialog | None = None
         self._stimulus_creator_dialog: StimulusCreatorDialog | None = None
-        self._stimulus_selector: StimulusSelectorPopup | None = None
         self._stimulus_library_popup: StimulusLibraryPopup | None = None
         self._spectrum_library_popup: SpectrumLibraryPopup | None = None
         self._spectrum_builder_dialog: SpectrumBuilderDialog | None = None
@@ -5806,17 +6499,20 @@ class ManuscriptSimApp(tk.Tk):
         top.pack(side=tk.TOP, fill=tk.X)
 
         ttk.Label(top, text="Stimulus:").pack(side=tk.LEFT, padx=(0, 8))
-        self._selected_display = ttk.Entry(
+        self._selected_display = ttk.Combobox(
             top,
             textvariable=self._selected_stimulus_var,
+            values=tuple(self._known_stimuli),
             state="readonly",
             width=32,
         )
         self._selected_display.pack(side=tk.LEFT)
-        self._select_btn = ttk.Button(
-            top, text="Select…", command=self._open_stimulus_selector
+        self._selected_display.bind(
+            "<<ComboboxSelected>>", self._on_stimulus_combobox_selected
         )
-        self._select_btn.pack(side=tk.LEFT, padx=(8, 0))
+        self._selected_display.bind(
+            "<Button-1>", self._on_stimulus_combobox_click, add="+"
+        )
 
         self._run_btn = tk.Button(
             top,
@@ -6125,16 +6821,6 @@ class ManuscriptSimApp(tk.Tk):
                 pass
         self._stimulus_creator_dialog = StimulusCreatorDialog(self)
 
-    def _open_stimulus_selector(self) -> None:
-        if self._stimulus_selector is not None:
-            try:
-                if self._stimulus_selector.winfo_exists():
-                    self._stimulus_selector.lift()
-                    return
-            except tk.TclError:
-                pass
-        self._stimulus_selector = StimulusSelectorPopup(self)
-
     def _open_stimulus_library_popup(self) -> None:
         if self._stimulus_library_popup is not None:
             try:
@@ -6187,6 +6873,26 @@ class ManuscriptSimApp(tk.Tk):
 
     def _set_selected_stimulus(self, label: str) -> None:
         self._selected_stimulus_var.set(label)
+
+    def _refresh_stimulus_dropdown_values(self) -> None:
+        """Keep the main-window stimulus combobox values in sync with the library."""
+        try:
+            self._selected_display["values"] = tuple(self._known_stimuli)
+        except (tk.TclError, AttributeError):
+            pass
+
+    def _on_stimulus_combobox_selected(self, _event=None) -> None:
+        label = self._selected_stimulus_var.get()
+        if label in self._known_stimuli:
+            self._set_selected_stimulus(label)
+        try:
+            self._selected_display.selection_clear()
+        except tk.TclError:
+            pass
+        self.focus_set()
+
+    def _on_stimulus_combobox_click(self, _event=None) -> None:
+        self._refresh_stimulus_dropdown_values()
 
     def _add_spectrum_via_dialog(self, parent=None) -> str | None:
         path = filedialog.askopenfilename(
@@ -6298,12 +7004,7 @@ class ManuscriptSimApp(tk.Tk):
         if self._selected_stimulus_var.get() == label:
             self._selected_stimulus_var.set(NO_STIMULUS_SELECTED_LABEL)
         self._status.config(text=f"Removed stimulus {label!r}.")
-        if self._stimulus_selector is not None:
-            try:
-                if self._stimulus_selector.winfo_exists():
-                    self._stimulus_selector._refresh_list()
-            except (tk.TclError, AttributeError):
-                pass
+        self._refresh_stimulus_dropdown_values()
         if self._stimulus_library_popup is not None:
             try:
                 if self._stimulus_library_popup.winfo_exists():
@@ -6403,6 +7104,7 @@ class ManuscriptSimApp(tk.Tk):
         """Reload custom stimuli from the user library and refresh known list."""
         self._custom_stimuli = library_storage.load_all_stimuli()
         self._known_stimuli = list(LABELS) + sorted(self._custom_stimuli.keys())
+        self._refresh_stimulus_dropdown_values()
 
     def _register_custom_stimulus(self, name: str, spec: dict) -> None:
         """Persist a stimulus spec to disk and add it to the run dropdown."""
@@ -6410,12 +7112,7 @@ class ManuscriptSimApp(tk.Tk):
         self._custom_stimuli[name] = spec
         if name not in self._known_stimuli:
             self._known_stimuli = list(LABELS) + sorted(self._custom_stimuli.keys())
-        if self._stimulus_selector is not None:
-            try:
-                if self._stimulus_selector.winfo_exists():
-                    self._stimulus_selector._refresh_list()
-            except (tk.TclError, AttributeError):
-                pass
+        self._refresh_stimulus_dropdown_values()
         if self._stimulus_library_popup is not None:
             try:
                 if self._stimulus_library_popup.winfo_exists():
@@ -6538,6 +7235,97 @@ class ManuscriptSimApp(tk.Tk):
                 self._custom_stimuli[label], self._env, self._custom_spectra
             )
         raise ValueError(f"Unknown stimulus label: {label!r}")
+
+    def _stimuli_using_spectrum(self, name: str) -> list[str]:
+        """Return custom stimulus names whose blocks reference ``name``."""
+        self._reload_stimulus_library_from_disk()
+        target = str(name).strip()
+        return sorted(
+            stim_name
+            for stim_name, spec in self._custom_stimuli.items()
+            if library_storage.spec_references_spectrum(spec, target)
+        )
+
+    def _apply_spectrum_delete_resolution(
+        self,
+        name: str,
+        affected: list[str],
+        result: tuple[str, str | None],
+    ) -> bool:
+        """Resolve stimulus references before deleting spectrum ``name``.
+
+        ``result`` is ``(\"delete_stimuli\", None)`` or ``(\"replace\", replacement)``.
+        Returns False if resolution fails (spectrum should not be deleted).
+        """
+        action, replacement = result
+        try:
+            if action == "delete_stimuli":
+                for label in list(affected):
+                    if not self._remove_known_stimulus(label):
+                        if label in self._custom_stimuli:
+                            messagebox.showerror(
+                                "Delete Spectrum",
+                                f"Could not delete stimulus protocol {label!r}. "
+                                "The spectrum was not deleted.",
+                                parent=self,
+                            )
+                            return False
+                self._status.config(
+                    text=(
+                        f"Removed {len(affected)} stimulus protocol(s) that used "
+                        f"spectrum {name!r}."
+                    )
+                )
+            elif action == "replace":
+                if not replacement:
+                    messagebox.showerror(
+                        "Delete Spectrum",
+                        "No replacement spectrum was selected.",
+                        parent=self,
+                    )
+                    return False
+                for label in affected:
+                    spec = self._custom_stimuli.get(label)
+                    if spec is None:
+                        continue
+                    new_spec = library_storage.replace_spectrum_ref(
+                        spec, name, replacement
+                    )
+                    self._register_custom_stimulus(label, new_spec)
+                self._status.config(
+                    text=(
+                        f"Replaced spectrum {name!r} with {replacement!r} in "
+                        f"{len(affected)} stimulus protocol(s)."
+                    )
+                )
+            else:
+                messagebox.showerror(
+                    "Delete Spectrum",
+                    f"Unknown resolution action {action!r}.",
+                    parent=self,
+                )
+                return False
+        except Exception as exc:
+            messagebox.showerror(
+                "Delete Spectrum",
+                f"Could not resolve stimulus references:\n{exc}\n"
+                "The spectrum was not deleted.",
+                parent=self,
+            )
+            return False
+
+        if self._stimulus_creator_dialog is not None:
+            try:
+                if self._stimulus_creator_dialog.winfo_exists():
+                    messagebox.showinfo(
+                        "Delete Spectrum",
+                        "The open Stimulus Builder may still reference the deleted "
+                        "spectrum in its unsaved grid. Review its intervals before saving.",
+                        parent=self,
+                    )
+            except tk.TclError:
+                pass
+        return True
 
     def _delete_spectrum(self, name: str) -> bool:
         if name in _SPECTRUM_LIBRARY_ENTRIES:

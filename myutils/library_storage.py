@@ -18,6 +18,7 @@ guarded by ``data/user_library/.reset_done`` so it only runs once.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import numbers
@@ -559,6 +560,42 @@ def make_interval_block(spectrum_ref: str, intensity: float, duration: float) ->
         "intensity": float(intensity),
         "duration": float(duration),
     }
+
+
+def spec_references_spectrum(spec: dict, name: str) -> bool:
+    """Return True if any interval block in ``spec`` references ``name``."""
+    target = str(name).strip()
+    for block in spec.get("blocks", []):
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") != "interval":
+            continue
+        if str(block.get("spectrum_ref", "")).strip() == target:
+            return True
+    return False
+
+
+def replace_spectrum_ref(spec: dict, old: str, new: str) -> dict:
+    """Return a deep-copied spec with matching ``spectrum_ref`` values rewritten.
+
+    When ``new`` is ``"Dark"``, matching blocks also have their intensity forced
+    to ``0.0`` (matching the Stimulus Builder's Dark lock). Other fields
+    (``name``, ``version``, ``total_duration``, block order) are left untouched.
+    """
+    old_name = str(old).strip()
+    new_name = str(new).strip()
+    out = copy.deepcopy(spec)
+    for block in out.get("blocks", []):
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") != "interval":
+            continue
+        if str(block.get("spectrum_ref", "")).strip() != old_name:
+            continue
+        block["spectrum_ref"] = new_name
+        if new_name == "Dark":
+            block["intensity"] = 0.0
+    return out
 
 
 def coerce_blocks_from_legacy(intervals: list[dict]) -> list[dict]:

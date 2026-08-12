@@ -136,16 +136,14 @@ of this toolbar will be expanded upon in later sections.
 
 In order to run a model prediction, follow these steps:
 
-1. Click the **Select...** button just to the right of the stimulus bar.
-   (Upon launch the stimulus bar reads "Select stimulus to run...").
+1. Click the stimulus bar at the top of the main window
+   (upon launch it reads "Select stimulus to run..."). A drop-down
+   list of all stimuli in the stimulus library opens in place.
 
-2. Select a single stimulus from the pop-up menu by clicking it.
-   Once clicked the selected stimulus will be highlighted.
+2. Select a stimulus from the drop-down. The chosen stimulus appears
+   in the **Stimulus:** bar.
 
-3. Click the **Select** button at the bottom of the window.
-   Doing so will close the window and the selected stimulus will be visible in the **Stimulus:** bar.
-
-4. Click the green **Run model** button to run the model.
+3. Click the green **Run model** button to run the model.
 
 While the model runs, a progress bar and a status message to the right of the buttons
 report how far along the run is. The red **Stop** button cancels the current run. If an
@@ -307,6 +305,10 @@ To import a new stimulus the user can select the **Import Stimulus**
 button in the bottom left hand corner of the window. The same import dialogue 
 from **Import Stimulus** in the **File** menu will appear.
 
+To create a new stimulus from scratch, click **Make Custom Stimulus**
+in the bottom left hand corner of the **Stimulus Library** window.
+This opens the stimulus builder used elsewhere in the GUI.
+
 The stimulus library also allows the user to remove stimuli from the program.
 To delete a stimulus
 
@@ -342,6 +344,19 @@ To delete a spectrum the user can
 
 2. Click the **Delete Spectrum** button in the bottom left hand corner of the
    **Spectrum Library** window.
+
+3. If no saved stimulus protocols reference the spectrum, confirm the deletion
+   in the yes/no dialog.
+
+4. If one or more stimulus protocols use the spectrum, a warning dialog lists
+   those protocols and asks how to proceed before the spectrum is removed:
+
+   - **Delete these stimulus protocols** — remove every affected protocol from
+     the stimulus library, then delete the spectrum.
+   - **Replace it in these protocols with:** — pick another spectrum from the
+     library; every interval that referenced the doomed spectrum is rewritten
+     to the replacement (choosing **Dark** also forces intensity to zero), then
+     the original spectrum is deleted.
 
 Deleted spectra cannot be recovered and will have to be remade/reimported.
 
@@ -384,13 +399,10 @@ To make a custom **Monochromatic Spectrum**
 1. Select the **Monochromatic Spectrum** tab in the top left hand corner of
    the **Spectrum Builder** window.
 
-2. In the **Target Wavelength** text box input the desired wavelength.
+2. In the **Target Wavelength** text box input the desired wavelength. The
+   **Monochromatic impulse** graph updates automatically as you type.
 
-3. Click the **Update preview** button.
-
-4. View the custom spectrum in the **Monochromatic impulse** graph.
-
-5. Save the custom spectrum to the **Spectrum Library** by clicking the
+3. Save the custom spectrum to the **Spectrum Library** by clicking the
    **Save to library...** button in the bottom right hand corner of
    the **Spectrum Builder** window.
 
@@ -409,12 +421,18 @@ utilize the **Remove last row** button at the top of the **Mixed Spectrum** tab.
 After adding a new row (and thus equivalently adding a new light source to the spectrum)
 the user can set the **weight** of individual sources using the **weight** text box.
 
-After adding the appropriate weights, the user can select the
-**Normalize weights to sum 1** checkbox at the top of the
-**Mixed Spectrum** tab to normalize all given weights to 1.
+After adding the appropriate weights, the user can choose how each row is scaled
+before mixing with the checkboxes at the top of the **Mixed Spectrum** tab:
 
-The **Update preview** button, also at the top of the tab, redraws the
-**Weighted mixture** graph with the current rows and weights.
+- **Normalize rows to peak** (selected by default) divides each row by its maximum so
+  the row peaks at 1.
+- **Normalize rows to integrated photon count** divides each row by its trapezoid
+  integral over wavelength so the row integrates to 1.
+
+Only one of these checkboxes can be selected at a time. With neither selected, each
+row uses its raw spectral values. Row weights are applied after any normalization.
+The **Weighted mixture** graph updates automatically when rows, weights, or
+normalization options change.
 
 To save the newly-created custom spectrum, click the **Save to library...** button in the bottom right hand side of the **Mixed Spectrum** window. The **Mixed Spectrum** will be saved in the directory ``data/user_library/spectra``.
 
@@ -425,11 +443,18 @@ several model runs can be overlaid on the same axes. Use **Add files...** to loa
 previously exported runs, **Load current run** to include the run currently shown on
 the **Main Page**, and **Remove selected** to drop a run from the comparison.
 
-**Data Comparator...** overlays recorded experimental data on a model run. The data
-are read from a single-column `.csv` sampled at 100 Hz, and the model run can either be
-the current run or a previously exported `.csv` or `.npz`. The recorded data are
-interpolated onto the model's time base before plotting. The model series shown
-defaults to `currentGlobalGain` and can be changed in the dialogue.
+**Data Comparator...** overlays recorded experimental data on a model run. Datasets
+may be `.csv`, `.tsv`, `.txt`, or Excel (`.xlsx`/`.xls`). If a column named like
+`time` is present, its values become the data time base (units such as `ms`, `s`,
+or `min` are inferred from the header text and converted to seconds; the trace is
+zero-based to match the model). When no time column is found, you are prompted for
+a sampling rate (Hz) or sample interval (s). Headered files with multiple data
+columns offer a **Data column** picker (default: first non-time column). Legacy
+headerless single-column recordings still work and use the sampling-rate prompt
+(prefilled at 100 Hz). The model run can be the current run or a previously
+exported `.csv` or `.npz`. Recorded data are interpolated onto the model's time
+base before plotting. The model series shown defaults to `currentGlobalGain` and
+can be changed in the dialogue.
 
 ## Settings
 
