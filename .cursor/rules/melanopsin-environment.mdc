@@ -1,0 +1,18 @@
+---
+description: Use the melanopsin conda environment for all Python commands
+alwaysApply: true
+---
+
+# Melanopsin conda environment
+
+Run all Python, pytest, pip, and Jupyter commands in the **melanopsin** conda environment. Do not use the base Anaconda interpreter or any other env.
+
+```powershell
+conda run -n melanopsin python path\to\script.py
+conda run -n melanopsin pytest
+```
+
+In an interactive PowerShell session you can also `conda activate melanopsin` first, then call `python` / `pytest` as usual.
+
+Wrong: `python tests/check_timestep_convergence.py` (picks up base/system Python).
+Right: `conda run -n melanopsin python tests/check_timestep_convergence.py`

@@ -1131,7 +1131,7 @@ def predictMelanopsin(
     M2R = np.zeros(int(ti/rate))
     Mprime2Rprime = np.zeros(int(ti/rate))
 
-    # Initialize the starting state (if R=1, then all of the initial population is in the R state)
+    # Initialize the starting state 
     R_init =  1 / (1 + kbleachR / koffO) # Start at equilibrium determined by the balance of bleaching and recovery
     R[0] = R_init
     M[0] = 0
