@@ -13,6 +13,28 @@ This repository is released in two tracks:
 - **bioRxiv preprint:** tag [`v0.1.0-bioRxiv`](https://github.com/Do-Laboratory/melanopsin-model/releases/tag/v0.1.0-prelim) freezes the code and Windows executable that match Nguyen and Caval-Holme et al. 2026 (bioRxiv). Use this snapshot to reproduce the preprint.
 - **Continuously updated:** the default branch (`main` or the current development branch) and the **Latest** release on the [Releases](https://github.com/Do-Laboratory/melanopsin-model/releases) page receive ongoing fixes and improvements. 
 
+## Run the app (no Python required)
+
+The GUI ships as a single Windows executable.
+
+1. Download this repository or clone it using Git:
+
+   ```bash
+   git clone https://github.com/Do-Laboratory/melanopsin-model.git
+   ```
+
+2. Download `MelanopsinModel-v<version>.exe` from the repository's
+   **Releases** page and place it in the downloaded/cloned folder.
+
+3. Double-click the `.exe`.
+
+The executable reads the spectral assets in `data/` and writes results to
+`outputs/`. **Keep the `.exe` inside the cloned repository** so it can find
+`data/` and `myutils/`. (It searches upward from its own location for those
+folders, so placing it in the repository root or in `dist/` both work.)
+
+No Python installation is required to run the executable.
+
 ## Run the tutorial notebook
 
 The interactive tutorial is [`Melanopsin_Model_Tutorial.ipynb`](Melanopsin_Model_Tutorial.ipynb).
@@ -40,28 +62,6 @@ jupyter notebook Melanopsin_Model_Tutorial.ipynb
 ```
 
 You can also open the same `.ipynb` in a programming environment (VS Code/Cursor, Pycharm, JupyterLab, Spyder...) with a Python 3.10 kernel. Run the **Initialization** cell with the notebook in the repository root (the notebook will try to move there if needed).
-
-## Run the app (no Python required)
-
-The GUI ships as a single Windows executable.
-
-1. Download this repository or clone it using Git:
-
-   ```bash
-   git clone https://github.com/Do-Laboratory/melanopsin-model.git
-   ```
-
-2. Download `MelanopsinModel-v<version>.exe` from the repository's
-   **Releases** page and place it in the downloaded/cloned folder.
-
-3. Double-click the `.exe`.
-
-The executable reads the spectral assets in `data/` and writes results to
-`outputs/`. **Keep the `.exe` inside the cloned repository** so it can find
-`data/` and `myutils/`. (It searches upward from its own location for those
-folders, so placing it in the repository root or in `dist/` both work.)
-
-No Python installation is required to run the executable.
 
 ## Run from source (for development)
 
