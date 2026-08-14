@@ -4,7 +4,7 @@ Light regulates the circadian clock, mood, sleep, development, and vision. Under
 
 For an in-depth explanation of the biological context and the mechanisms instantiated in the model, see the open-access preprint: Nguyen and Caval-Holme et al. 2026.
 
-The model runs through an interactive coding notebook, an app with a graphical user interface, or from source code. We recommend starting with the tutorial notebook, then exploring in the GUI.
+The model runs through an app with a graphical user interface (GUI), an interactive tutorial notebook, or from source code. The GUI allows users to interact with the model immediately, without having to think about underlying implementation details. The tutorial notebook provides a more technical overview of stimulus creation, model parameter tuning, and ways to interact directly with the source code.
 
 ## Releases
 
