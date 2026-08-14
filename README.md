@@ -10,8 +10,8 @@ The model runs through an app with a graphical user interface (GUI), an interact
 
 This repository is released in two tracks:
 
-- **bioRxiv preprint:** tag [`v0.1.0-bioRxiv`](https://github.com/Do-Laboratory/melanopsin-model/releases/tag/v0.1.0-prelim) freezes the code and Windows executable that match Nguyen and Caval-Holme et al. 2026 (bioRxiv). Use this snapshot to reproduce the preprint.
-- **Continuously updated:** the default branch (`main` or the current development branch) and the **Latest** release on the [Releases](https://github.com/Do-Laboratory/melanopsin-model/releases) page receive ongoing fixes and improvements. 
+- **bioRxiv preprint:** tag [`v0.1.0-bioRxiv2026`](https://github.com/MichaelDo-Lab/melanopsin-model/releases/tag/v0.1.0-bioRxiv2026) freezes the code and Windows executable that match Nguyen and Caval-Holme et al. 2026 (bioRxiv). Use this snapshot to reproduce the preprint.
+- **Continuously updated:** the default branch (`main` or the current development branch) and the **Latest** release on the [Releases](https://github.com/MichaelDo-Lab/melanopsin-model/releases) page receive ongoing fixes and improvements. 
 
 ## Run the app (no Python required)
 
@@ -20,7 +20,7 @@ The GUI ships as a single Windows executable.
 1. Download this repository or clone it using Git:
 
    ```bash
-   git clone https://github.com/Do-Laboratory/melanopsin-model.git
+   git clone https://github.com/MichaelDo-Lab/melanopsin-model.git
    ```
 
 2. Download `MelanopsinModel-v<version>.exe` from the repository's
@@ -54,7 +54,7 @@ Colab sessions are temporary—download any plots or data you want to keep.
 Requires Python 3.10.x. From the repository root:
 
 ```bash
-git clone https://github.com/Do-Laboratory/melanopsin-model.git
+git clone https://github.com/MichaelDo-Lab/melanopsin-model.git
 cd melanopsin-model
 pip install -r requirements.txt
 pip install jupyter
