@@ -835,7 +835,7 @@ def get_predict_melanopsin_defaults():
     return {
 
         # Simulation time step, in seconds
-        'rate': 0.01,
+        'rate': 0.01, # Euler blow-up at rates coarser than 0.02 sec. 
 
         # Toggle features
         'activity feedback': True,
