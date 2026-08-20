@@ -228,7 +228,12 @@ sets can also be imported into the GUI by utilizing the **Load Preset** button
 that is also in the bottom left hand corner of the **Model parameters** window.
 
 Configuration presets are saved as ``.json`` files and can be found in
-``data/user_library/configurations``.
+``data/user_library/configurations``. That folder includes two shipped
+manuscript presets: ``GS.json`` (gain-shifting kinetics, no feedback or
+bleaching) and ``No-GS.json`` (the 2015 R-M-E tristable model with no
+adaptation). Load either with **Load Preset**, then click **Update**. These
+are distinct from **Reset to defaults**, which restores the GUI's current
+full-model defaults (feedback and bleaching on).
 
 To reset the parameters back to their default manuscript values, click the **Reset to defaults** button at the bottom right of the **Model parameters** window.
 

@@ -1,11 +1,11 @@
 ---
-description: Use the melanopsin conda environment for all Python commands
+description: Always run the melanopsin model in the melanopsin conda environment (not base)
 alwaysApply: true
 ---
 
 # Melanopsin conda environment
 
-Run all Python, pytest, pip, and Jupyter commands in the **melanopsin** conda environment. Do not use the base Anaconda interpreter or any other env.
+Always run the melanopsin model in the **melanopsin** conda environment. It does not work in `base` (or any other env). Use `melanopsin` for all Python, pytest, pip, and Jupyter commands.
 
 ```powershell
 conda run -n melanopsin python path\to\script.py

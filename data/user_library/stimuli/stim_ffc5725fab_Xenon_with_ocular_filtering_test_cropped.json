@@ -1,0 +1,253 @@
+{
+  "version": 2,
+  "name": "Xenon with ocular filtering_test_cropped",
+  "total_duration": 2952.0938,
+  "blocks": [
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 11.0938
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 30023408.823120024,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 63757312.15047431,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 123424108.79360522,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 223975234.51784152,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 476869998.1017778,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 1113781500.1346633,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 1841111115.4351592,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 6646300910.19504,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 13734093509.770018,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 17559008941.99146,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 279.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 30023408.823120024,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 63757312.15047431,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 123424108.79360522,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 223975234.51784152,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 476869998.1017778,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 1113781500.1346633,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 1841111115.4351592,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 6646300910.19504,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 13734093509.770018,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 139.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "XeEye_test_cropped",
+      "intensity": 17559008941.99146,
+      "duration": 1.0
+    },
+    {
+      "type": "interval",
+      "spectrum_ref": "Dark",
+      "intensity": 0.0,
+      "duration": 140.0
+    }
+  ]
+}
