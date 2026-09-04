@@ -194,9 +194,7 @@ def setupModelRun(experiment, stimulustype, rate = 0.005, dilation = 1, specwlen
     """
     Description
     -----------
-    setupModelRun() was a debugging function that packaged many different model parameter presets. 
-    This was used extensively during the construction of this model but it is no longer essential.
-    Utilize at ones own risk.
+    Creates a light stimulus based on user input.
 
     Parameters
     ----------
@@ -1112,7 +1110,7 @@ def predictMelanopsin(
     mg[0] = 0
     currentGlobalGain[0] = 0
 
-    # initial state (all pigment in R state)
+    # pigment state arrays
     R = np.zeros(int(ti/rate))
     M = np.zeros(int(ti/rate))
     E = np.zeros(int(ti/rate))
@@ -1131,8 +1129,9 @@ def predictMelanopsin(
     M2R = np.zeros(int(ti/rate))
     Mprime2Rprime = np.zeros(int(ti/rate))
 
-    # Initialize the starting state 
-    R_init =  1 / (1 + kbleachR / koffO) # Start at equilibrium determined by the balance of bleaching and recovery
+    # Dark start: R↔O equilibrium. With default kbleachR = koffO, half of melanopsin
+    # is in O; remaining chromophore-bound pigment is in R (M, E, and primed states = 0).
+    R_init =  1 / (1 + kbleachR / koffO)
     R[0] = R_init
     M[0] = 0
     E[0] = 0
