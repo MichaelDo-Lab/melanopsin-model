@@ -5,3 +5,6 @@
 # PyInstaller. Tested with Python 3.10.x.
 -r ../requirements.txt
 pyinstaller==6.11.1
+# setuptools 71+ vendors jaraco.context, which imports this on Python < 3.12.
+# Needed so the frozen app can run PyInstaller's pkg_resources runtime hook.
+backports.tarfile==1.2.0

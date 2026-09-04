@@ -52,12 +52,26 @@ if (-not $SkipVenv) {
 Write-Host "Using Python interpreter: $Python"
 & $Python --version
 
+# Conda-based Pythons (including venvs created from them) load stdlib
+# extensions like pyexpat.pyd from the base prefix. Those .pyd files depend
+# on DLLs in Library\bin. Put that folder on PATH so PyInstaller can resolve
+# them during binary analysis.
+$pythonHome = (& $Python -c "import sys; print(sys.base_prefix)").Trim()
+$condaBin = Join-Path $pythonHome "Library\bin"
+if (Test-Path $condaBin) {
+    Write-Host "Adding conda DLL directory to PATH: $condaBin"
+    $env:PATH = "$condaBin;$env:PATH"
+}
+
 Write-Host "Upgrading pip and installing build dependencies ..."
 & $Python -m pip install --upgrade pip
 & $Python -m pip install -r (Join-Path $ScriptDir "requirements-build.txt")
 
 Write-Host "Running PyInstaller ..."
 & $Python -m PyInstaller --noconfirm --clean (Join-Path $ScriptDir "melanopsin_gui.spec")
+if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller failed with exit code $LASTEXITCODE. If dist\*.exe is locked, close the running app and retry."
+}
 
 $Exe = Get-ChildItem -Path (Join-Path $RepoRoot "dist") -Filter "MelanopsinModel-v*.exe" -ErrorAction SilentlyContinue |
     Select-Object -First 1
