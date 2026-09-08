@@ -120,8 +120,7 @@ This produces `dist/MelanopsinModel-v<version>.exe`.
 # The GUI
 
 A graphical user interface (GUI) allows users to create or import light spectra,
-build light stimulus protocols, and export model predictions. This section is
-a guide to using the GUI.
+build light stimulus protocols, and export model predictions. 
 
 ## The Main Page: Selecting a Light Stimulus and Running the Model 
 
