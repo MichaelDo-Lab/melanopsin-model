@@ -158,6 +158,30 @@ LABELS = (
     "Xenon",
     "Xenon with ocular filtering",
 )
+
+
+def resolve_manuscript_ti(
+    native_ti: float,
+    override: float | None,
+    override_label: str | None,
+    run_label: str,
+) -> float:
+    """Return simulation end time, applying a Stimulus Builder duration override.
+
+    The builder duration may extend a manuscript protocol (trailing dark) only
+    when it was loaded for that same label. A leftover custom duration, or a
+    shorter duration, must not shrink ``ti`` below the protocol's native value
+    because timings are not truncated.
+    """
+    native = float(native_ti)
+    if run_label not in LABELS or override is None or override_label != run_label:
+        return native
+    override_ti = float(override)
+    if override_ti >= native:
+        return override_ti
+    return native
+
+
 ADD_NEW_STIMULUS_LABEL = "Add stimulus"
 NO_STIMULUS_SELECTED_LABEL = "Select stimulus to run..."
 
@@ -1920,9 +1944,9 @@ class StimulusBuilderDialog(tk.Toplevel):
         # seed with the first interval
         self._stimulus_dirty = False
         self._tracking_edits = False
+        self._loaded_source_name: str | None = None
         self._add_interval()
         self._sync_duration_to_parent()
-        self._loaded_source_name: str | None = None
         self._tracking_edits = True
         place_toplevel(self, parent, mode="edge")
 
@@ -3104,9 +3128,11 @@ class StimulusBuilderDialog(tk.Toplevel):
         if total > 0:
             self._duration_var.set(f"{total:g}")
             self._parent._stimulus_duration_override = float(total)
+            self._parent._stimulus_duration_override_label = self._loaded_source_name
         else:
             self._duration_var.set("")
             self._parent._stimulus_duration_override = None
+            self._parent._stimulus_duration_override_label = None
 
     def _add_dark_interval(self, duration: float) -> None:
         self._add_interval()
@@ -3508,6 +3534,7 @@ class StimulusBuilderDialog(tk.Toplevel):
             return
         self._parent._set_selected_stimulus(name)
         self._loaded_source_name = name
+        self._sync_duration_to_parent()
         self._mark_stimulus_clean()
         messagebox.showinfo(
             "Save stimulus",
@@ -6437,6 +6464,7 @@ class ManuscriptSimApp(tk.Tk):
         self._last_label: str | None = None
         self._model_config: dict = dict(get_predict_melanopsin_defaults())
         self._stimulus_duration_override: float | None = None
+        self._stimulus_duration_override_label: str | None = None
         self._config_dialog: ModelConfigDialog | None = None
         self._custom_stim_dialog: CustomStimulusDialog | None = None
         self._stimulus_creator_dialog: StimulusCreatorDialog | None = None
@@ -6679,11 +6707,12 @@ class ManuscriptSimApp(tk.Tk):
 
             try:
                 stim = self._build_run_protocol(label)
-                if (
-                    label in LABELS
-                    and self._stimulus_duration_override is not None
-                ):
-                    stim["ti"] = float(self._stimulus_duration_override)
+                stim["ti"] = resolve_manuscript_ti(
+                    stim["ti"],
+                    self._stimulus_duration_override,
+                    self._stimulus_duration_override_label,
+                    label,
+                )
                 result = predictMelanopsin(
                     stim,
                     config=self._model_config,

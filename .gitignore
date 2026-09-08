@@ -22,3 +22,10 @@ Thumbs.db
 
 # Debug logs
 debug-*.log
+
+# User-generated library (spectra, stimuli, custom presets).
+# Keep the two shipped manuscript parameter presets.
+data/user_library/**
+!data/user_library/configurations/
+!data/user_library/configurations/GS.json
+!data/user_library/configurations/No-GS.json
