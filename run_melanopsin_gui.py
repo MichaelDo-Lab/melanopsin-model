@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """One-click launcher for the Melanopsin Model desktop GUI.
 
-This is the script PyInstaller bundles into the distributed executable (see
-``packaging/melanopsin_gui.spec``). It is also the recommended way to start the
-app from a source checkout::
+This is the script PyInstaller bundles into the distributed Windows
+``.exe`` and macOS ``.app`` (see ``packaging/melanopsin_gui.spec``). It is also
+the recommended way to start the app from a source checkout::
 
     python run_melanopsin_gui.py
 
@@ -69,8 +69,9 @@ def main() -> int:
         _show_fatal_error(
             "Melanopsin Model - startup error",
             "The application failed to load its modules.\n\n"
-            "If you are running the .exe, make sure it sits inside the cloned "
-            "repository (next to the data/ and myutils/ folders).\n\n"
+            "If you are running the packaged app (.exe or .app), make sure it "
+            "sits inside the cloned repository (next to the data/ and myutils/ "
+            "folders).\n\n"
             + traceback.format_exc(),
         )
         return 1

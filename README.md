@@ -10,12 +10,13 @@ The model runs through an app with a graphical user interface (GUI), an interact
 
 This repository is released in two tracks:
 
-- **bioRxiv preprint:** tag [`v0.1.0-bioRxiv2026`](https://github.com/MichaelDo-Lab/melanopsin-model/releases/tag/v0.1.0-bioRxiv2026) freezes the code and Windows executable that match Nguyen and Caval-Holme et al. 2026 (bioRxiv). Use this snapshot to reproduce the preprint.
+- **bioRxiv preprint:** tag [`v0.1.0-bioRxiv2026`](https://github.com/MichaelDo-Lab/melanopsin-model/releases/tag/v0.1.0-bioRxiv2026) freezes the code and Windows executable that match Nguyen and Caval-Holme et al. 2026 (bioRxiv). Use this snapshot to reproduce the preprint. Later releases also attach macOS apps.
 - **Continuously updated:** the default branch (`main` or the current development branch) and the **Latest** release on the [Releases](https://github.com/MichaelDo-Lab/melanopsin-model/releases) page receive ongoing fixes and improvements. 
 
 ## Run the app (no Python required)
 
-The GUI ships as a single Windows executable.
+The GUI ships as a Windows executable and as two macOS apps (Apple Silicon and
+Intel). Pick the download that matches your computer.
 
 1. Download this repository or clone it using Git:
 
@@ -23,17 +24,30 @@ The GUI ships as a single Windows executable.
    git clone https://github.com/MichaelDo-Lab/melanopsin-model.git
    ```
 
-2. Download `MelanopsinModel-v<version>.exe` from the repository's
-   **Releases** page and place it in the downloaded/cloned folder.
+2. From the repository's **Releases** page, download the matching binary and
+   place it in the cloned folder:
 
-3. Double-click the `.exe`.
+   | Computer | Download |
+   | --- | --- |
+   | Windows | `MelanopsinModel-v<version>.exe` |
+   | Mac with Apple silicon (M1/M2/M3/…) | `MelanopsinModel-v<version>-macos-arm64.zip` |
+   | Intel Mac | `MelanopsinModel-v<version>-macos-x86_64.zip` |
 
-The executable reads the spectral assets in `data/` and writes results to
-`outputs/`. **Keep the `.exe` inside the cloned repository** so it can find
+   On macOS, unzip the archive so the `.app` sits in the cloned folder. An
+   Apple silicon Mac can also run the Intel zip via Rosetta 2; an Intel Mac
+   cannot run the Apple silicon app.
+
+3. Double-click the `.exe` or `.app`. The first time you open the macOS app,
+   macOS Gatekeeper may block it because it is not notarized. Right-click the
+   `.app`, choose **Open**, and confirm. You can also remove the quarantine
+   flag in Terminal: `xattr -dr com.apple.quarantine MelanopsinModel-v*.app`.
+
+The app reads the spectral assets in `data/` and writes results to `outputs/`.
+**Keep the `.exe` or `.app` inside the cloned repository** so it can find
 `data/` and `myutils/`. (It searches upward from its own location for those
 folders, so placing it in the repository root or in `dist/` both work.)
 
-No Python installation is required to run the executable.
+No Python installation is required to run the packaged app.
 
 ## Run the tutorial notebook
 
@@ -101,12 +115,12 @@ Files for developers:
 | --- | --- |
 | `myutils/` | The model code, plotting functions, and the desktop GUI (`melanopsin_gui.py`). |
 | `myutils/app_paths.py` | Works out where `data/` and `outputs/` live, both when running from source and from the packaged app. |
-| `myutils/_version.py` | The version number, which sets the executable's file name and window title. |
-| `packaging/` | Scripts and settings for building the Windows executable (see [`packaging/README.md`](packaging/README.md)). |
-| `.github/workflows/` | Automation that builds the executable and attaches it to a GitHub Release when a version tag such as `v0.2.0` is pushed. |
+| `myutils/_version.py` | The version number, which sets the packaged app's file name and window title. |
+| `packaging/` | Scripts and settings for building the Windows executable and macOS apps (see [`packaging/README.md`](packaging/README.md)). |
+| `.github/workflows/` | Automation that builds the Windows executable and both macOS apps and attaches them to a GitHub Release when a version tag such as `v0.2.0` is pushed. |
 | `LICENSE` | Terms of use. |
 
-## Building the executable
+## Building the packaged app
 
 See [`packaging/README.md`](packaging/README.md). In short, from the repository
 root on Windows:
@@ -116,6 +130,15 @@ powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Clean
 ```
 
 This produces `dist/MelanopsinModel-v<version>.exe`.
+
+On a Mac (builds the architecture of that machine, `arm64` or `x86_64`):
+
+```bash
+bash packaging/build_macos.sh --clean
+```
+
+This produces `dist/MelanopsinModel-v<version>-macos-<arch>.app` and a matching
+`.zip`. GitHub Actions builds both Mac architectures when a version tag is pushed.
 
 # The GUI
 

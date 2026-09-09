@@ -5,14 +5,18 @@ Build (from the repository root):
 
     pyinstaller packaging/melanopsin_gui.spec
 
-Produces a single windowed executable in ``dist/`` named
-``MelanopsinModel-v<version>.exe`` (the extension is added automatically on
-Windows). The executable is meant to live inside a cloned copy of this
-repository: it reads ``data/`` and ``configs/`` and writes ``outputs/``
-relative to its own location, so the large data assets are NOT bundled.
+On Windows this produces a single windowed executable in ``dist/`` named
+``MelanopsinModel-v<version>.exe``. On macOS it produces an onedir ``.app``
+bundle named ``MelanopsinModel-v<version>-macos-<arch>.app``, where ``<arch>``
+is the native architecture of the build machine (``arm64`` or ``x86_64``).
+
+The packaged app is meant to live inside a cloned copy of this repository: it
+reads ``data/`` and writes ``outputs/`` relative to the clone, so the large
+data assets are NOT bundled.
 """
 
 import os
+import platform
 import sys
 
 from PyInstaller.utils.hooks import collect_submodules
@@ -25,9 +29,27 @@ if PROJECT_ROOT not in sys.path:
 
 from myutils._version import __version__  # noqa: E402
 
-APP_NAME = f"MelanopsinModel-v{__version__}"
+
+def _macos_arch():
+    """Normalize ``platform.machine()`` to the arch suffix used in app names."""
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        return "x86_64"
+    if machine in ("arm64", "aarch64"):
+        return "arm64"
+    return machine
+
+
+IS_DARWIN = sys.platform == "darwin"
+if IS_DARWIN:
+    APP_NAME = f"MelanopsinModel-v{__version__}-macos-{_macos_arch()}"
+    ICON_PATH = os.path.join(PROJECT_ROOT, "packaging", "app_icon.icns")
+else:
+    APP_NAME = f"MelanopsinModel-v{__version__}"
+    ICON_PATH = os.path.join(PROJECT_ROOT, "packaging", "app_icon.ico")
+
 ENTRY_SCRIPT = os.path.join(PROJECT_ROOT, "run_melanopsin_gui.py")
-ICON_PATH = os.path.join(PROJECT_ROOT, "packaging", "app_icon.ico")
+
 
 def _collect_conda_runtime_dlls():
     """Bundle conda ``Library/bin`` DLLs that stdlib extensions need.
@@ -139,25 +161,73 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name=APP_NAME,
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=ICON_PATH if os.path.exists(ICON_PATH) else None,
-)
+_icon = ICON_PATH if os.path.exists(ICON_PATH) else None
+
+if IS_DARWIN:
+    # Onedir + BUNDLE is the supported way to produce a macOS .app. Leave
+    # target_arch unset so each CI runner (Apple Silicon vs Intel) builds native.
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name=APP_NAME,
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        icon=_icon,
+    )
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        name=APP_NAME,
+    )
+    app = BUNDLE(
+        coll,
+        name=f"{APP_NAME}.app",
+        icon=_icon,
+        bundle_identifier="org.michaeldo-lab.melanopsin-model",
+        info_plist={
+            "CFBundleName": "Melanopsin Model",
+            "CFBundleDisplayName": "Melanopsin Model",
+            "CFBundleShortVersionString": __version__,
+            "CFBundleVersion": __version__,
+            "NSHighResolutionCapable": True,
+            "NSPrincipalClass": "NSApplication",
+        },
+    )
+else:
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        [],
+        name=APP_NAME,
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        icon=_icon,
+    )

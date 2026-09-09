@@ -15,6 +15,7 @@ venv/
 /dist/
 *.manifest
 *.exe
+*.app
 
 # OS / editor cruft
 .DS_Store

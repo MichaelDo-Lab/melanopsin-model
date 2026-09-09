@@ -1,8 +1,8 @@
-# Build-time dependencies for producing the Windows executable.
+# Build-time dependencies for producing the Windows executable and macOS .app.
 #
 # Install into a clean virtual environment, then run packaging/build_windows.ps1
-# (which does this for you). Pulls in the app's pinned runtime dependencies plus
-# PyInstaller. Tested with Python 3.10.x.
+# or packaging/build_macos.sh (which do this for you). Pulls in the app's pinned
+# runtime dependencies plus PyInstaller. Tested with Python 3.10.x.
 -r ../requirements.txt
 pyinstaller==6.11.1
 # setuptools 71+ vendors jaraco.context, which imports this on Python < 3.12.

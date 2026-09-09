@@ -7,22 +7,24 @@ should resolve those locations through here instead of using relative paths or
 source checkout (notebooks, ``python -m myutils.melanopsin_gui``) or from a
 frozen PyInstaller executable.
 
-Distribution contract for the ``.exe``
----------------------------------------
-The executable is intentionally *not* fully self-contained: it ships alongside a
-cloned copy of this repository and reads ``data/`` and writes ``outputs/``
+Distribution contract for the ``.exe`` / ``.app``
+-------------------------------------------------
+The packaged app is intentionally *not* fully self-contained: it ships alongside
+a cloned copy of this repository and reads ``data/`` and writes ``outputs/``
 relative to that repository -- not relative to the temporary folder PyInstaller
 unpacks itself into. The intended workflow for academics is:
 
     git clone <repo>
-    # double-click dist/MelanopsinModel-vX.Y.Z.exe (or a copy placed in the repo)
+    # double-click the .exe or .app placed in the clone (or in dist/)
 
 ``project_root()`` therefore resolves the repository, not the bundle:
 
 * Frozen build: start at the executable's directory and walk upward looking for
-  a folder that contains the expected asset directories (so the same ``.exe``
-  works whether it lives in the repo root or in ``dist/``). If none is found we
-  fall back to the executable's own directory.
+  a folder that contains the expected asset directories (so the same binary
+  works whether it lives in the repo root or in ``dist/``). On macOS the
+  executable sits at ``Something.app/Contents/MacOS/...``; walking up from there
+  still reaches the clone. If none is found we fall back to the executable's
+  own directory.
 * Source checkout: the parent of the ``myutils/`` package.
 """
 

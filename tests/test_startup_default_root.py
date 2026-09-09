@@ -1,6 +1,6 @@
 """Live regression: launcher-order startup must leave a usable default root.
 
-``run_melanopsin_gui.py`` (and the released ``.exe``) create ``StartupSplash``
+``run_melanopsin_gui.py`` (and the released ``.exe`` / ``.app``) create ``StartupSplash``
 before ``ManuscriptSimApp``. Destroying that splash used to clear
 ``tkinter._default_root``, so post-startup dialogs crashed. This test reproduces
 that launch order and asserts the dialogs open.
