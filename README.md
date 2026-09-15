@@ -2,7 +2,7 @@
 
 Light regulates the circadian clock, mood, sleep, development, and vision. Underlying all of these functions are neural signals originating from melanopsin cells in the eye. Here, we present a model that predicts electrical signals called photocurrents that melanopsin cells generate in response to light. 
 
-For an in-depth explanation of the biological context and the mechanisms instantiated in the model, see the open-access preprint: Nguyen and Caval-Holme et al. 2026.
+For an in-depth explanation of the biological context and the mechanisms instantiated in the model, see the open-access preprint: [Nguyen and Caval-Holme et al. 2026](https://www.biorxiv.org/content/10.64898/2026.09.09.750349v1).
 
 The model runs through an app with a graphical user interface (GUI), an interactive tutorial notebook, or from source code. The GUI allows users to interact with the model immediately, without having to think about underlying implementation details. The tutorial notebook provides a more technical overview of stimulus creation, model parameter tuning, and ways to interact directly with the source code.
 
@@ -10,7 +10,7 @@ The model runs through an app with a graphical user interface (GUI), an interact
 
 This repository is released in two tracks:
 
-- **bioRxiv preprint:** tag [`v0.1.0-bioRxiv2026`](https://github.com/MichaelDo-Lab/melanopsin-model/releases/tag/v0.1.0-bioRxiv2026) freezes the code and Windows executable that match Nguyen and Caval-Holme et al. 2026 (bioRxiv). Use this snapshot to reproduce the preprint. Later releases also attach macOS apps.
+- **bioRxiv preprint:** tag [`v0.1.0-bioRxiv2026`](https://github.com/MichaelDo-Lab/melanopsin-model/releases/tag/v0.1.0-bioRxiv2026) freezes the code and Windows executable that match [Nguyen and Caval-Holme et al. 2026](https://www.biorxiv.org/content/10.64898/2026.09.09.750349v1) (bioRxiv). Use this snapshot to reproduce the preprint. Later releases also attach macOS apps.
 - **Continuously updated:** the default branch (`main` or the current development branch) and the **Latest** release on the [Releases](https://github.com/MichaelDo-Lab/melanopsin-model/releases) page receive ongoing fixes and improvements. 
 
 ## Run the app (no Python required)
