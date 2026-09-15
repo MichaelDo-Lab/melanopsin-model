@@ -37,10 +37,11 @@ Intel). Pick the download that matches your computer.
    Apple silicon Mac can also run the Intel zip via Rosetta 2; an Intel Mac
    cannot run the Apple silicon app.
 
-3. Double-click the `.exe` or `.app`. The first time you open the macOS app,
-   macOS Gatekeeper may block it because it is not notarized. Right-click the
-   `.app`, choose **Open**, and confirm. You can also remove the quarantine
-   flag in Terminal: `xattr -dr com.apple.quarantine MelanopsinModel-v*.app`.
+3. Double-click the `.exe` or `.app`. 
+
+4. On macOS, you may have to manage permissions. Put the cloned repository **outside Desktop, Documents, and Downloads** (for example `~/melanopsin-model`). Those three folders are privacy-protected on macOS; an unsigned `.app` often cannot create `data/user_library/spectra/` there. Make sure the folder is owned by the logged-in user:
+   `sudo chown -R "$(whoami)" "/path/to/melanopsin-model"`. Make the tree readable and traversable:
+   `chmod -R 755 "/path/to/melanopsin-model"`. Then unzip the matching `.app` into that folder and open it.
 
 The app reads the spectral assets in `data/` and writes results to `outputs/`.
 **Keep the `.exe` or `.app` inside the cloned repository** so it can find
